@@ -1,0 +1,164 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+:root {
+  --bg: oklch(0.12 0.025 220);
+  --bg-deep: oklch(0.08 0.018 220);
+  --surface: oklch(0.18 0.03 220);
+  --surface-raised: oklch(0.24 0.035 220);
+  --ink: oklch(0.97 0.01 220);
+  --muted: oklch(0.72 0.025 220);
+  --primary: oklch(0.65 0.10 200);
+  --primary-deep: oklch(0.43 0.09 205);
+  --accent: oklch(0.78 0.15 72);
+  --success: oklch(0.72 0.14 155);
+  --line: oklch(0.40 0.04 220 / 0.48);
+  --soft-line: oklch(0.60 0.03 220 / 0.18);
+  font-family: 'DM Sans', 'Microsoft YaHei', sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  /* 应用整体是深色，需在根节点声明：原生下拉弹层、日历弹层、滚动条
+     只按文档级 color-scheme 渲染，写在下拉框元素上不会生效 */
+  color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+html, body, #app { min-width: 320px; min-height: 100%; margin: 0; }
+body { min-height: 100vh; background: var(--bg); }
+button, input, select { font: inherit; }
+button { cursor: pointer; }
+
+.app-shell { display: flex; min-height: 100vh; overflow: hidden; background: radial-gradient(circle at 70% 0%, oklch(0.27 0.06 205 / 0.28), transparent 34rem), var(--bg); }
+.rail { width: 146px; flex: 0 0 146px; min-height: 100vh; padding: 28px 14px 22px; display: flex; flex-direction: column; background: oklch(0.095 0.02 220 / 0.94); border-right: 1px solid var(--soft-line); }
+.brand-mark { display: grid; place-items: center; width: 42px; height: 42px; margin: 0 auto; color: var(--bg-deep); background: var(--accent); border-radius: 50%; font: 700 13px 'Space Grotesk', sans-serif; letter-spacing: .04em; box-shadow: 0 0 28px oklch(0.78 0.15 72 / .2); }
+.rail-rule { height: 1px; margin: 28px 11px 22px; background: var(--soft-line); }
+.rail-nav { display: grid; gap: 9px; }
+.rail-item { position: relative; display: grid; grid-template-columns: 24px 1fr; gap: 1px 7px; align-items: center; padding: 12px 9px; border: 1px solid transparent; border-radius: 10px; color: var(--muted); text-align: left; background: transparent; transition: .25s ease; }
+.rail-item:hover, .rail-item.active { color: var(--ink); background: oklch(0.23 0.045 205 / .7); border-color: oklch(0.65 0.10 200 / .3); }
+.rail-item.active::before { position: absolute; left: -15px; width: 3px; height: 23px; border-radius: 0 3px 3px 0; background: var(--accent); content: ''; }
+.rail-icon { grid-row: span 2; align-self: center; color: var(--primary); font-size: 17px; }
+.rail-item span:not(.rail-icon) { font-size: 12px; font-weight: 600; }
+.rail-item small { color: oklch(0.62 0.025 220); font-size: 9px; letter-spacing: .02em; }
+.rail-footer { display: flex; align-items: center; gap: 7px; margin-top: auto; padding: 0 7px; color: oklch(0.63 0.025 220); font-size: 9px; white-space: nowrap; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); box-shadow: 0 0 10px var(--success); }
+.main-stage { width: min(1480px, calc(100% - 146px)); margin: 0 auto; padding: 34px clamp(28px, 5vw, 84px) 44px; }
+.topbar { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 46px; }
+.eyebrow, .section-kicker { margin: 0 0 11px; color: var(--primary); font: 600 10px 'Space Grotesk', sans-serif; letter-spacing: .16em; }
+.top-title-row { display: flex; align-items: center; gap: 14px; }
+h1, h2, h3, p { margin-top: 0; }
+h1, h2, h3 { font-family: 'Space Grotesk', 'Microsoft YaHei', sans-serif; text-wrap: balance; }
+h1 { max-width: 640px; margin-bottom: 0; font-size: clamp(26px, 3vw, 42px); line-height: 1.1; letter-spacing: -.04em; }
+h2 { margin-bottom: 0; font-size: clamp(22px, 2.2vw, 34px); line-height: 1.12; letter-spacing: -.035em; }
+h3 { font-size: 17px; }
+.version-tag { color: var(--muted); font-size: 10px; letter-spacing: .07em; }
+.top-actions { display: flex; align-items: center; gap: 16px; }
+.icon-button { width: 32px; height: 32px; border: 1px solid var(--soft-line); border-radius: 50%; color: var(--muted); background: transparent; }
+.avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: var(--bg-deep); background: var(--primary); font-size: 13px; font-weight: 700; }
+.map-viewport { position: relative; flex: 1; min-height: 386px; margin: 0 18px; overflow: hidden; isolation: isolate; background: radial-gradient(circle at 50% 44%, oklch(0.24 0.065 203 / .7), transparent 30%), oklch(0.105 0.02 220); }
+.map-caption, .map-coordinates { position: absolute; color: oklch(0.73 0.03 220); font-size: 9px; letter-spacing: .08em; }.map-caption { left: 20px; bottom: 18px; }.map-coordinates { right: 20px; bottom: 18px; text-align: right; line-height: 1.5; }
+.form-row, .long-form { display: grid; }.form-row { grid-template-columns: 1fr 1fr; gap: 14px; }.field-block { display: grid; gap: 7px; }/* 字段颜色原为浅色面板所配（近黑文字），深色主题下会完全看不见，故改用亮色 */ .field-block > span { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .04em; }.field-block input, .field-block select { width: 100%; padding: 11px 0; border: 0; border-bottom: 1px solid oklch(0.55 0.03 220 / .45); outline: none; color: var(--ink); background: transparent; font-size: 15px; }.field-block input:focus, .field-block select:focus { border-color: var(--primary); }.field-block input::placeholder { color: oklch(0.64 0.02 220); }
+/* 让浏览器按深色主题绘制原生控件：日期选择器图标、下拉箭头、弹层日历、数字微调箭头
+   这些默认是给浅色背景画的深色图形，深色底上会完全看不见 */
+.field-block input, .field-block select, .form-line input { color-scheme: dark; }
+/* 下拉选项会继承 select 的亮色文字，但弹层底色是系统默认的浅色，会出现白字白底，
+   因此必须给 option 显式指定深色底 */
+.field-block select option { color: var(--ink); background-color: oklch(0.18 0.03 220); }.primary-action { display: flex; justify-content: space-between; align-items: center; width: calc(100% - 64px); margin: 30px 32px 0; padding: 15px 17px; border: 0; border-radius: 8px; color: white; background: var(--primary-deep); font-weight: 700; transition: transform .2s ease, background .2s ease; }.primary-action:hover { background: oklch(0.36 0.10 205); transform: translateY(-2px); }.primary-action span { color: var(--accent); font-size: 20px; line-height: .5; }
+.content-view { max-width: 1120px; margin: 0 auto; }.content-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 42px; }.content-header h2 { margin-bottom: 12px; }.content-header p:not(.section-kicker) { max-width: 540px; margin-bottom: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }.large-step { color: var(--accent); font: 600 54px 'Space Grotesk'; opacity: .8; }.create-layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(250px, .6fr); gap: 30px; }.long-form { gap: 22px; }.form-section { padding: 27px 29px; border: 1px solid var(--soft-line); border-radius: 12px; background: oklch(0.15 0.027 220 / .72); }.form-section h3 { margin-bottom: 24px; color: var(--ink); }.form-section .form-row + .form-row { margin-top: 23px; }.preference-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }.preference { display: grid; gap: 5px; padding: 15px; border: 1px solid var(--soft-line); border-radius: 8px; color: var(--muted); background: transparent; text-align: left; }.preference strong { color: var(--ink); font-size: 13px; }.preference span { font-size: 10px; }.preference.active { border-color: var(--primary); background: oklch(0.65 0.10 200 / .1); }.form-submit { width: 210px; margin: 0; }.brief-aside { align-self: start; padding: 28px; border: 1px solid oklch(0.78 0.15 72 / .34); border-radius: 12px; background: oklch(0.22 0.045 220); }.aside-mark { display: grid; place-items: center; width: 42px; height: 42px; margin-bottom: 45px; border-radius: 50%; color: var(--bg-deep); background: var(--accent); font: 700 12px 'Space Grotesk'; }.brief-aside h3 { max-width: 180px; font-size: 22px; line-height: 1.18; }.brief-aside p { color: var(--muted); font-size: 12px; line-height: 1.7; }.aside-rule { height: 1px; margin: 55px 0 16px; background: var(--soft-line); }.brief-aside span, .brief-aside strong { display: block; font-size: 10px; }.brief-aside span { margin-bottom: 5px; color: var(--muted); }.brief-aside strong { color: var(--accent); }
+.plans-view { max-width: 1200px; }.plan-empty-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(300px, .8fr); gap: 28px; align-items: center; }.empty-map { position: relative; min-height: 440px; overflow: hidden; border: 1px solid var(--soft-line); border-radius: 12px; background: oklch(0.105 0.02 220); }.empty-map-grid { position: absolute; inset: 0; opacity: .3; background-image: linear-gradient(oklch(0.65 0.10 200 / .13) 1px, transparent 1px), linear-gradient(90deg, oklch(0.65 0.10 200 / .13) 1px, transparent 1px); background-size: 48px 48px; transform: rotate(-10deg) scale(1.4); }.empty-route-line { position: absolute; width: 68%; height: 35%; top: 28%; left: 16%; border-top: 1px dashed var(--accent); border-radius: 50%; transform: rotate(-15deg); }.empty-pin { position: absolute; width: 12px; height: 12px; border: 3px solid var(--bg); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 8px oklch(0.78 0.15 72 / .15), 0 0 25px var(--accent); }.empty-pin.one { top: 62%; left: 21%; }.empty-pin.two { top: 31%; right: 20%; background: var(--primary); box-shadow: 0 0 0 8px oklch(0.65 0.10 200 / .15), 0 0 25px var(--primary); }.empty-label { position: absolute; right: 22px; bottom: 20px; color: var(--muted); font: 10px 'Space Grotesk'; letter-spacing: .12em; }.empty-copy { padding: 24px 20px; }.empty-symbol { display: block; margin-bottom: 21px; color: var(--accent); font-size: 34px; }.empty-copy h3 { margin-bottom: 10px; font-size: 25px; }.empty-copy p { max-width: 350px; color: var(--muted); font-size: 13px; line-height: 1.7; }.empty-copy .primary-action { width: 205px; margin: 27px 0 0; }.plan-types { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 34px; }.plan-types span { padding: 7px 9px; border: 1px solid var(--soft-line); border-radius: 5px; color: var(--muted); font-size: 10px; }
+.view-enter { animation: rise-in .55s ease-out both; }
+@keyframes rise-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 900px) { .main-stage { width: calc(100% - 86px); padding-right: 26px; padding-left: 26px; }.rail { width: 86px; flex-basis: 86px; }.rail-item { grid-template-columns: 1fr; justify-items: center; text-align: center; }.rail-item small { display: none; }.rail-item.active::before { left: -15px; }.create-layout, .plan-empty-layout { grid-template-columns: 1fr; }.map-viewport { min-height: 350px; }.brief-aside { display: none; } }
+@media (max-width: 620px) { .app-shell { display: block; }.rail { position: sticky; z-index: 2; top: 0; display: flex; flex-direction: row; align-items: center; width: 100%; min-height: auto; height: 66px; padding: 10px 16px; border-right: 0; border-bottom: 1px solid var(--soft-line); }.brand-mark { width: 36px; height: 36px; margin: 0 14px 0 0; }.rail-rule, .rail-footer { display: none; }.rail-nav { display: flex; flex: 1; gap: 5px; }.rail-item { flex: 1; grid-template-columns: 1fr; padding: 8px 3px; }.rail-item.active::before { top: -11px; left: 50%; width: 23px; height: 3px; transform: translateX(-50%); }.rail-icon { grid-row: auto; font-size: 14px; }.rail-item span:not(.rail-icon) { font-size: 10px; }.main-stage { width: 100%; padding: 27px 17px 32px; }.topbar { margin-bottom: 31px; }.top-actions { gap: 8px; }.top-title-row { display: block; }.version-tag { display: inline-block; margin-top: 8px; }.map-viewport { min-height: 315px; margin: 0 10px; }.content-header { margin-bottom: 25px; }.large-step { font-size: 38px; }.form-section { padding: 21px 18px; }.form-row, .preference-grid { grid-template-columns: 1fr; }.form-section .form-row + .form-row { margin-top: 18px; }.primary-action { width: calc(100% - 40px); margin-right: 20px; margin-left: 20px; }.form-submit { width: 100%; }.empty-map { min-height: 290px; }.empty-copy { padding: 19px 3px; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
+
+/* The landing page is a continuous atlas, not a collection of cards. */
+.story-view { position: relative; min-height: 320vh; margin: -34px clamp(-84px, -5vw, -28px) -44px; overflow: clip; background: radial-gradient(circle at 50% 14%, oklch(0.22 0.065 205 / .35), transparent 28rem), var(--bg-deep); }
+.story-progress { position: fixed; z-index: 4; top: 0; right: 0; left: 146px; height: 2px; background: oklch(0.8 0.15 72 / .12); }
+.story-progress span { display: block; width: 100%; height: 100%; transform-origin: left; background: var(--accent); }
+.story-scene { position: relative; min-height: 100vh; padding: 18vh clamp(28px, 8vw, 140px) 0; }
+.scene-copy { position: relative; z-index: 2; max-width: 520px; }
+.scene-copy h2, .planner-copy h2 { font-size: clamp(42px, 6vw, 88px); line-height: .98; letter-spacing: -.06em; }
+.scene-copy em, .planner-copy em { color: var(--accent); font-style: normal; }
+.scene-note { max-width: 250px; margin-top: 34px; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.scroll-cue { position: absolute; right: 8vw; bottom: 9vh; display: flex; align-items: center; gap: 11px; color: var(--muted); font-size: 10px; writing-mode: vertical-rl; }
+.scroll-cue span { width: 1px; height: 60px; background: linear-gradient(var(--accent), transparent); }
+.map-stage { position: absolute; z-index: 1; top: 68vh; left: 0; width: 100%; height: 120vh; }
+.globe-scene { position: sticky; top: 0; width: 100%; height: 100vh; min-height: 620px; border: 0; margin: 0; background: radial-gradient(circle at 48% 44%, oklch(0.27 0.08 202 / .56), transparent 24%), transparent; transition: opacity .1s linear; }
+.globe-scene-container, .china-map-scene-container { position: absolute; inset: 0; width: 100%; height: 100%; }
+.globe-scene-container canvas { display: block; width: 100%; height: 100%; }
+.china-map-scene-container { min-height: 420px; }
+.globe-scene > .map-caption, .globe-scene > .map-coordinates { z-index: 2; }
+/* 以下 .atlas-* 与 .planner-scene 的基础规则已删除：
+   它们只在 story 模式出现，残留的 top/width/aspect-ratio 会污染故事页布局
+   （曾导致规划页被推到 218vh、地图层坐标系只有 650×715）。样式统一写在下方 story 段落里。 */
+.planner-copy p:last-child { max-width: 300px; color: var(--muted); font-size: 13px; line-height: 1.8; }
+.planner-form { align-self: center; max-width: 650px; }
+.form-line { display: grid; grid-template-columns: 1fr 35px 1fr; gap: 22px; align-items: end; border-bottom: 1px solid var(--soft-line); padding: 20px 0; }
+.form-line-small { grid-template-columns: repeat(3, 1fr); margin-top: 20px; }
+.form-line label { display: grid; gap: 12px; color: var(--muted); font-size: 10px; letter-spacing: .08em; }
+.form-line input { width: 100%; padding: 5px 0 10px; border: 0; border-bottom: 1px solid var(--line); outline: 0; color: var(--ink); background: transparent; font-size: 18px; }
+.form-line input:focus { border-color: var(--accent); }.form-line input::placeholder { color: oklch(0.64 0.02 220); }.form-arrow { color: var(--accent); font-size: 24px; }
+.planner-form .primary-action { width: 220px; margin: 38px 0 0; }.form-warning { margin-top: 14px; color: var(--accent); font-size: 11px; }
+.content-view { padding-top: 8vh; }.form-section, .brief-aside, .empty-map { border: 0; border-radius: 0; background: transparent; }.form-section { border-bottom: 1px solid var(--soft-line); padding-right: 0; padding-left: 0; }.form-section:first-child { border-top: 1px solid var(--soft-line); }
+.preference { border-color: var(--soft-line); border-radius: 0; }.preference.active { background: transparent; border-color: var(--primary); }.brief-aside { border-top: 1px solid var(--accent); }.empty-map { border-bottom: 1px solid var(--soft-line); }
+@media (max-width: 900px) { .story-progress { left: 86px; }.planner-scene { grid-template-columns: 1fr; }.planner-copy h2 { font-size: clamp(42px, 10vw, 70px); }.planner-form { width: 100%; }.atlas-scene { left: 38%; width: 76vw; } }
+@media (max-width: 620px) { .story-progress { left: 0; }.planner-form { margin-top: 42px; }.form-line, .form-line-small { grid-template-columns: 1fr; gap: 20px; }.form-arrow { display: none; }.planner-form .primary-action { width: 100%; }.scroll-cue { right: 28px; }.content-view { padding-top: 2vh; } }
+
+/* Story mode owns the viewport. The product chrome stays out of the hero. */
+.app-shell.is-story { display: block; min-height: 100vh; overflow: visible; background: var(--bg-deep); }
+.is-story .rail { display: none; }
+.is-story .main-stage { width: 100%; max-width: none; padding: 0; }
+.is-story .topbar { position: fixed; z-index: 10; top: 0; right: 0; left: 0; margin: 0; padding: 28px clamp(24px, 5vw, 72px); pointer-events: none; }
+.is-story .topbar > * { pointer-events: auto; }
+.is-story .topbar .eyebrow { display: none; }
+.is-story .topbar h1 { font-size: 15px; letter-spacing: .04em; }
+.is-story .topbar .version-tag { display: none; }
+.is-story .top-actions { gap: 12px; }
+.is-story .avatar { width: 30px; height: 30px; }
+/* 三页叙事：每页正好一屏。第 1 页是中国地图，第 2 页是规划页，地图层固定在两者之间复用 */
+.is-story .story-view { position: relative; min-height: 300vh; margin: 0; overflow: clip; background: radial-gradient(circle at 50% 16%, oklch(0.22 0.065 205 / .4), transparent 34rem), var(--bg-deep); }
+.is-story .story-progress { left: 0; z-index: 6; }
+.is-story .story-scene { min-height: 100vh; height: 100vh; padding: 23vh clamp(28px, 9vw, 150px) 0; }
+.is-story .scene-copy { max-width: min(38vw, 520px); }
+.is-story .scene-copy h2 { max-width: 520px; font-size: clamp(42px, 5.4vw, 82px); }
+/* 第二页只需要一屏占位，地图本体在固定的 .map-stage 层里 */
+.is-story .story-spacer { height: 100vh; }
+.is-story .map-stage { position: fixed; z-index: 1; inset: 0; width: 100%; height: 100vh; margin: 0; pointer-events: none; }
+.is-story .globe-scene { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; margin: 0; overflow: hidden; background: transparent; }
+.is-story .globe-scene-container, .is-story .china-map-scene-container { position: absolute; inset: 0; }
+.is-story .globe-scene-container { width: 68vw; height: 68vh; top: 16vh; left: 27vw; background: transparent; transform: translateX(var(--globe-x, 0%)) scale(var(--globe-scale, 1)); transform-origin: 50% 50%; transition: transform .08s linear; }
+.is-story .globe-scene-container canvas { width: 100% !important; height: 100% !important; }
+/* 地图层：缩放与位移由 JS 实测第三页左栏后写入 style，不再用 CSS 猜位置 */
+.is-story .atlas-scene { position: absolute; z-index: 2; inset: 0; width: 100%; height: 100%; transform-origin: 50% 50%; pointer-events: none; }
+/* 地球阶段开放拖拽旋转；中国地图阶段开放地图交互；过渡期间一律禁止操作 */
+.story-view[data-story-phase="earth"] .globe-scene-container { pointer-events: auto; cursor: grab; user-select: none; }
+.story-view[data-story-phase="earth"] .globe-scene-container:active { cursor: grabbing; }
+.story-view[data-story-phase="china-map"] .atlas-scene,
+.story-view[data-story-phase="china-map"] .atlas-scene .china-map-wrap { pointer-events: auto; }
+.story-view.is-transitioning .globe-scene-container,
+.story-view.is-transitioning .atlas-scene,
+.story-view.is-transitioning .planner-scene { pointer-events: none; }
+.is-story .atlas-scene .china-map-wrap { position: absolute; top: 50%; left: 50%; width: min(86vw, 1100px); height: min(76vh, 760px); transform: translate(-50%, -50%); }
+.china-map-wrap { position: relative; width: 100%; height: 100%; }
+.china-map-toolbar { position: absolute; z-index: 2; top: 2%; left: 5%; display: flex; align-items: center; gap: 12px; color: var(--ink); font: 600 12px 'Space Grotesk', 'Microsoft YaHei', sans-serif; letter-spacing: .04em; pointer-events: auto; }
+.china-map-toolbar small { color: var(--muted); font: 10px 'DM Sans', 'Microsoft YaHei', sans-serif; }
+.china-map-toolbar.is-national { color: var(--primary); }
+.china-map-back { padding: 0; border: 0; color: var(--accent); background: transparent; font: inherit; cursor: pointer; }
+/* 用直接子选择器：.atlas-scene 里还有下钻工具栏的 <small>，不能一并命中 */
+.is-story .atlas-scene > small { position: absolute; right: 8vw; bottom: 10vh; color: var(--muted); font: 10px 'Space Grotesk'; letter-spacing: .14em; }
+/* 第三页：背景保持透明，只在文字一侧压暗，左侧地图始终可见 */
+.is-story .planner-scene { position: relative; z-index: 4; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: clamp(28px, 6vw, 110px); align-items: center; height: 100vh; padding: 12vh clamp(28px, 7vw, 120px) 7vh; background: transparent; }
+.is-story .planner-scene::before { position: absolute; z-index: -1; inset: 0; background: linear-gradient(90deg, transparent 0%, transparent 40%, oklch(0.08 0.03 215 / .8) 58%, oklch(0.08 0.03 215 / .94) 100%); content: ''; }
+/* 左栏插槽：仅用于量出地图应落在何处，地图本体仍在固定层中 */
+.is-story .planner-map-slot { position: relative; width: 100%; height: min(62vh, 540px); }
+.is-story .planner-map-slot::after { position: absolute; inset: 19% 0; border: 1px solid oklch(0.65 0.1 200 / .14); border-radius: 50%; content: ''; pointer-events: none; }
+.is-story .planner-map-slot span { position: absolute; right: 0; bottom: -22px; color: var(--muted); font: 10px 'Space Grotesk'; letter-spacing: .14em; }
+.is-story .planner-content { min-width: 0; }
+.is-story .planner-copy { max-width: 560px; }
+.is-story .planner-copy h2 { max-width: 13em; margin-bottom: 24px; font-size: clamp(30px, 3.2vw, 50px); line-height: 1.14; letter-spacing: -.03em; }
+.is-story .planner-copy p:last-child { max-width: 30em; color: var(--muted); font-size: 14px; line-height: 1.8; }
+.is-story .planner-form { max-width: 620px; margin-top: 42px; }
+.is-story .map-caption, .is-story .map-coordinates { z-index: 3; }
+@media (max-width: 900px) { .is-story .globe-scene-container { width: 76vw; height: 64vh; top: 20vh; left: 24vw; }.is-story .planner-scene { grid-template-columns: 1fr; gap: 18px; align-content: center; padding: 12vh clamp(24px, 6vw, 60px) 7vh; }.is-story .planner-scene::before { background: linear-gradient(180deg, transparent 0%, oklch(0.08 0.03 215 / .88) 52%, oklch(0.08 0.03 215 / .96) 100%); }.is-story .planner-map-slot { height: 36vh; } }
+@media (max-width: 620px) { .is-story .topbar { padding: 18px 20px; }.is-story .topbar h1 { font-size: 13px; }.is-story .story-scene { padding: 20vh 25px 0; }.is-story .scene-copy { max-width: 84vw; }.is-story .scene-copy h2 { font-size: clamp(40px, 12vw, 62px); }.is-story .globe-scene-container { width: 92vw; height: 56vh; top: 35vh; left: 8vw; }.is-story .planner-scene { padding: 10vh 25px 6vh; }.is-story .planner-map-slot { height: 30vh; }.is-story .planner-copy h2 { font-size: clamp(28px, 7.6vw, 40px); } }

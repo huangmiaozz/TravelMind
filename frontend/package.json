@@ -1,0 +1,23 @@
+{
+  "name": "travelmind-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "china-geojson": "^1.0.0",
+    "earth-flyline": "^1.6.9",
+    "echarts": "^6.1.0",
+    "topojson-client": "^3.1.0",
+    "vue": "^3.5.42",
+    "world-atlas": "^2.0.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.9",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  }
+}
