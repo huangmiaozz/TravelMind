@@ -67,12 +67,13 @@ python -m uvicorn app.main:app --reload
 TravelMind/
 ├── PRODUCT.md      # 产品定义：用户、目标、设计原则
 ├── DESIGN.md       # 设计系统：色板、字体、动效
-├── docs/           # 需求基线、路线图、API 与数据策略
+├── docs/           # 需求原文、SRS、路线图、API 与数据策略
 ├── frontend/       # Vue 3 前端
 └── backend/        # FastAPI 后端
 ```
 
-需求基线与开发进度见 [`docs/ROADMAP.md`](./docs/ROADMAP.md)，
+需求原文（权威基线）见 [`docs/REQUIREMENTS_ORIGINAL.md`](./docs/REQUIREMENTS_ORIGINAL.md)，
+开发进度与偏离登记见 [`docs/ROADMAP.md`](./docs/ROADMAP.md)，
 数据来源与可信度策略见 [`docs/DATA_STRATEGY.md`](./docs/DATA_STRATEGY.md)。
 
 ## 数据说明

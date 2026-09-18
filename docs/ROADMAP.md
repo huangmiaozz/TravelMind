@@ -1,6 +1,7 @@
 # TravelMind 路线图与偏差登记
 
-> 基线：[`REQUIREMENTS.md`](./REQUIREMENTS.md)（Phase 0 需求规格说明）
+> 基线：[`REQUIREMENTS_ORIGINAL.md`](./REQUIREMENTS_ORIGINAL.md)（**用户需求原文**，21 节，权威）
+> 派生：[`REQUIREMENTS.md`](./REQUIREMENTS.md)（基于原文重写的 SRS，章节号与原文不同）
 > 核对日期：2026-09-17 ｜ 最近更新：2026-09-18 ｜ 当前版本：`v0.1.0`
 
 本文档记录三件事：**不可改变的目标**、**已实现/未实现的进度**、**与原需求的每一处偏差及其性质**。
@@ -164,13 +165,24 @@ class POI(Base):
 
 ### 4.2 规划器评分维度不足
 
-| 需求（第 8 节） | 当前实现 |
+需求**原文第八节「优化目标」**（见 [`REQUIREMENTS_ORIGINAL.md`](./REQUIREMENTS_ORIGINAL.md)）：
+
+| 需求原文 | 当前实现 |
 |---|---|
 | `Score = w1·Interest + w2·Time + w3·Cost + w4·Route + w5·Weather + w6·Comfort` | `interest 0.45 + cost 0.20 + confidence 0.20 + weather 0.15` |
 
 - **缺** `Time` / `Route` / `Comfort`
-- **多** `Confidence`（需求未列，但符合"数据可信度"精神，建议保留）
-- 需求第 9 节的动态权重表（省钱型 / 舒适型 / 兴趣优先）未实现，权重为硬编码
+- **多** `Confidence`（原文未列，但符合「数据可信度」精神，保留）
+- 原文的动态权重表未实现，权重为硬编码：
+
+| 方案取向 | Cost | Time | Comfort | Interest | Route | Weather |
+|---|---:|---:|---:|---:|---:|---:|
+| 省钱型 | 40% | 20% | 10% | 30% | — | — |
+| 舒适型 | 10% | 30% | 40% | 20% | — | — |
+| 兴趣优先 | 10% | 15% | 10% | 50% | 15% | — |
+
+> 原文三张权重表**都没给 Weather 权重**，「省钱型 / 舒适型」也没给 Route 权重。
+> 缺失维度如何处理必须在实现时明确定义 —— 不能默默当 0。
 
 ### 4.3 多方案缺一种
 
@@ -178,11 +190,11 @@ class POI(Base):
 
 当前 4 种：`best_overall` / `cheapest` / `most_comfortable` / `best_interest_match`。
 
-"最省时"依赖时间维度计算，属 4.1 的连锁缺口。且多方案评分只用了 2 个权重（interest、cost），与需求第 9 节的 4 维权重表不符。
+「最省时」依赖时间维度计算，属 4.1 的连锁缺口。且多方案评分只用了 2 个权重（interest、cost），与需求**原文第八节**的权重表不符。
 
 ### 4.4 前端缺 4 个页面
 
-需求第十五节列了 7 个页面：
+需求**原文第十五节「前端页面」**列了 7 个页面：
 
 | 页面 | 状态 |
 |---|---|
