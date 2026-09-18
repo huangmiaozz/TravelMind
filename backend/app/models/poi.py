@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from geoalchemy2 import Geometry
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -24,6 +24,12 @@ class POI(Base):
     source_url: Mapped[str | None] = mapped_column(Text)
     crawl_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     confidence: Mapped[float | None] = mapped_column(Numeric(4, 3))
+    # —— 规划所需字段 ——
+    # 兴趣标签及权重，与 UserPreference.interests 共用同一套标签体系
+    # （history / culture / nature / photography / food ...）
+    interest_tags: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    # 推荐游玩时长（分钟）。排程依赖它；缺失时由数据整合层回退到默认值。
+    visit_minutes: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

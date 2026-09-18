@@ -3,26 +3,23 @@ from datetime import date, time
 from pydantic import BaseModel, Field
 
 
-class PlannerCandidateInput(BaseModel):
-    poi_id: int = Field(gt=0)
-    name: str = Field(min_length=1)
-    category: str = Field(min_length=1)
-    interest_tags: dict[str, float] = Field(default_factory=dict)
-    estimated_cost: float = Field(ge=0)
-    visit_minutes: int = Field(gt=0)
-    confidence: float = Field(ge=0, le=1)
-    weather_sensitive: bool = False
+class PlannerPlanRequest(BaseModel):
+    """按目的地城市生成行程。
 
+    候选 POI 由服务端依据 `city` 从数据库检索（见 `app.services.candidates`），
+    客户端不再需要自行拼装坐标、开放时间与门票。
+    """
 
-class PlannerGenerateRequest(BaseModel):
+    city: str = Field(min_length=1, description="目的地城市名，例如「北京」")
     travel_date: date
-    candidates: list[PlannerCandidateInput] = Field(min_length=1)
     interests: dict[str, float] = Field(default_factory=dict)
     budget_total: float = Field(default=0, ge=0)
     daily_start: time = time(8, 0)
     daily_end: time = time(22, 0)
     max_daily_items: int = Field(default=4, ge=1, le=20)
     avoid_tight_schedule: bool = True
+    # 每天最大步行距离（公里）；None 表示不限制
+    max_walk_km: float | None = Field(default=None, gt=0)
 
 
 class PlannedItemResponse(BaseModel):

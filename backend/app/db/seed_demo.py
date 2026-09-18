@@ -73,9 +73,20 @@ def get_or_create_poi(db, city, name, category, tags, cost, minutes, point):
             source=DEMO_SOURCE,
             source_url=DEMO_SOURCE_URL,
             confidence=Decimal("0.10"),
+            # 这两列是数据整合层的输入：兴趣标签参与加权评分，游玩时长参与排程。
+            # 早先的种子脚本只把它们当局部变量返回、没有落库，规划器因而拿不到。
+            interest_tags=tags,
+            visit_minutes=minutes,
         )
         db.add(poi)
         db.flush()
+    else:
+        # 这两列是后加的（数据整合层需要）。旧库中的记录可能为空，
+        # 而种子脚本本就是幂等的，这里顺带补齐 —— 重跑一次即可修复历史数据。
+        if not poi.interest_tags:
+            poi.interest_tags = tags
+        if poi.visit_minutes is None:
+            poi.visit_minutes = minutes
 
     if not poi.opening_hours:
         for day in ("mon", "tue", "wed", "thu", "fri", "sat", "sun"):
@@ -103,7 +114,7 @@ def get_or_create_poi(db, city, name, category, tags, cost, minutes, point):
                 confidence=Decimal("0.10"),
             )
         )
-    return poi, tags, minutes
+    return poi
 
 
 def seed_demo_data() -> None:

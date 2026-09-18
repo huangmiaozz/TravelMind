@@ -1,7 +1,7 @@
 # TravelMind 路线图与偏差登记
 
 > 基线：[`REQUIREMENTS.md`](./REQUIREMENTS.md)（Phase 0 需求规格说明）
-> 核对日期：2026-09-17 ｜ 当前版本：`v0.1.0`
+> 核对日期：2026-09-17 ｜ 最近更新：2026-09-18 ｜ 当前版本：`v0.1.0`
 
 本文档记录三件事：**不可改变的目标**、**已实现/未实现的进度**、**与原需求的每一处偏差及其性质**。
 
@@ -44,7 +44,7 @@
 | 2 | FastAPI（结构 / 模型 / Schema / CRUD / REST） | 🟢 基本完成 | 18 个端点，全部可运行 |
 | 3 | Vue（页面 / 路由 / 状态 / API 请求 / 地图 / UI） | 🟡 部分 | 页面与地图完成；路由、状态管理、API 请求未做 |
 | 4 | 数据采集（API Service / 爬虫 / 清洗 / 入库） | ⚪ 未开始 | 表结构已预留 source / confidence 等字段 |
-| 5 | 旅行规划算法 | 🟡 后半段 | 评分与排程完成；**候选检索、数据整合、开放时间、距离缺失** |
+| 5 | 旅行规划算法 | 🟡 前半段已补 | 候选检索 + 数据整合已完成；评分与排程已有。**开放时间过滤、距离计算仍缺** |
 | 6 | 多方案 | 🟡 4 / 5 | 缺"最省时" |
 | 7 | 动态规划 | ⚪ 未开始 | `/planner/replan` 端点存在，但无自动触发 |
 | 8 | AI | ⚪ 未开始 | — |
@@ -122,7 +122,10 @@
 
 ## 四、核心缺口
 
-### 4.1 根因：Phase 2 与 Phase 5 之间缺一层
+### 4.1 根因：Phase 2 与 Phase 5 之间缺一层 ✅ 已补（2026-09-18）
+
+> 2026-09-18：本层已实现，见 `app/services/candidates.py`。
+> 下面记录的是修复前的状态，保留作为依据。
 
 需求 8.1 的核心流程里，"候选 POI 检索 → 数据整合"是规划之前的必经步骤。**这一层目前不存在。**
 
@@ -218,7 +221,7 @@ class POI(Base):
 | 11 | 12 个输入字段 | 前端采集 5 个 + 4 个兴趣标签 | **核心** | **补** |
 | 12 | `GET /api/pois/nearby` | 未实现 | 次要 | **补**（PostGIS 已就绪，成本低） |
 | 13 | `GET /api/transport/search` | 实为 `POST /routes/search` | 表面 | **保留** |
-| 14 | 候选 POI 检索 + 数据整合层 | 不存在 | **核心** | **补**（见 4.1） |
+| 14 | 候选 POI 检索 + 数据整合层 | **已实现**（`app/services/candidates.py`） | **核心** | ✅ **已补**（2026-09-18） |
 | 15 | 规划过程页 / 费用页 / 详情页 | 未实现 | 核心 | **补** |
 | 16 | Phase 0 技术验证（高德 / Open-Meteo / Amadeus） | 未验证 | Phase 尾巴 | **补** —— 高德需先取得 API Key |
 | 17 | Phase 4 数据采集 | 未开始 | 时序 | 按 Phase 推进 |
@@ -230,13 +233,17 @@ class POI(Base):
 
 按依赖顺序，不按 Phase 编号：
 
-**第 1 步 — 补「候选检索 + 数据整合」层**（对应偏差 #14）
+**第 1 步 — 补「候选检索 + 数据整合」层**（对应偏差 #14）✅ 已完成 2026-09-18
 
-- 新增 service：输入「目的地城市 + 旅行日期 + 用户约束」→ 输出 `PlanningCandidate` 列表
-- 数据来源：按城市查 `pois` → 关联 `opening_hours` / `tickets` → 从 `geom` 取坐标
-- 扩展 `PlanningCandidate`：加坐标、开放时间、门票价
-- 扩展 `PlanningPreferences`：加 `max_walk_distance`、每日出行时间窗
-- 调整 `/planner/generate` 签名：从「客户端传 candidates」改为「客户端传目的地 + 约束」
+已落地：
+
+- 新增 `app/services/candidates.py`：按城市名检索 POI，整合坐标 / 开放时间 / 门票
+- `POI` 新增 `interest_tags`、`visit_minutes` 两列（原先种子脚本只算不用，没有落库）
+- `PlanningCandidate` 新增 `latitude` / `longitude` / `opening_windows`（带默认值，保持位置参数兼容）
+- `PlanningPreferences` 新增 `max_walk_km`
+- `/planner/*` 三个端点改为 `{city, travel_date, ...}`，服务端自行检索；城市不存在或无 POI 返回 404
+
+仍未做（属第 2 步）：开放时间过滤、距离与交通时间计算。
 
 **第 2 步 — 规划器接入新字段**（对应偏差 #7 / #8 / #9 / #10）
 
