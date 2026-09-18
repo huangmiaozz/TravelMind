@@ -65,6 +65,9 @@ class PlannedItem:
     end_time: time
     estimated_cost: float
     score: float
+    # 该条目访问时段的开放时间是**已知**还是未知。
+    # 默认 False 是保守取值：没经过 `opening_filter` 判定的构造不应声称知道。
+    opening_known: bool = False
 
 
 @dataclass(frozen=True)

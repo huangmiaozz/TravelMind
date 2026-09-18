@@ -33,6 +33,8 @@ def generate_plan_options(
             daily_end=base_preferences.daily_end,
             max_daily_items=max(1, base_preferences.max_daily_items - (1 if plan_type == "most_comfortable" else 0)),
             avoid_tight_schedule=plan_type == "most_comfortable" or base_preferences.avoid_tight_schedule,
+            # 用户约束必须原样带下去 —— 漏传会让「每天最大步行距离」静默失效
+            max_walk_km=base_preferences.max_walk_km,
         )
         day_plan = generate_day_plan(travel_date, candidates, preferences)
         interest_total = sum(item.score for item in day_plan.items)
