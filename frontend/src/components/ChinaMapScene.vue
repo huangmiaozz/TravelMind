@@ -1,19 +1,12 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import * as echarts from 'echarts'
-import chinaGeoJson from 'china-geojson'
+import chinaGeoJson, { type ChinaGeoJson } from 'china-geojson'
 
-type ChinaFeature = {
-  type: 'Feature'
-  properties?: { id?: string; name?: string }
-  geometry: unknown
-}
-
-type ChinaGeoJsonModule = { China: { type: 'FeatureCollection'; features: ChinaFeature[] } }
 const container = ref<HTMLDivElement | null>(null)
 const props = withDefaults(defineProps<{ interactive?: boolean }>(), { interactive: true })
 let chart: echarts.ECharts | null = null
-let china: ChinaGeoJsonModule['China']
+let china: ChinaGeoJson
 const currentRegion = ref('中国')
 const canGoBack = ref(false)
 
@@ -24,7 +17,9 @@ function registerAndRender(regionName = '中国') {
   const mapName = regionName === '中国' ? 'china' : `region-${feature?.properties?.id ?? regionName}`
   const mapData = feature ? { type: 'FeatureCollection', features: [feature] } : china
 
-  echarts.registerMap(mapName, mapData as echarts.GeoJSONSource)
+  // echarts 6 的类型里没有导出 GeoJSONSource，直接取 registerMap 第二参数的类型，
+  // 避免硬编码可能随版本变动的类型名
+  echarts.registerMap(mapName, mapData as Parameters<typeof echarts.registerMap>[1])
   currentRegion.value = regionName
   canGoBack.value = Boolean(feature)
   chart.clear()
@@ -74,7 +69,7 @@ function resize() {
 onMounted(() => {
   if (!container.value) return
 
-  china = (chinaGeoJson as ChinaGeoJsonModule).China
+  china = chinaGeoJson.China
   chart = echarts.init(container.value, undefined, { renderer: 'svg' })
   chart.on('click', handleMapClick)
   registerAndRender()

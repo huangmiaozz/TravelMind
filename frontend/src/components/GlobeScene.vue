@@ -404,7 +404,11 @@ onMounted(() => {
           disableX: true,
           disableY: true,
         },
-      },
+        // 库把 Options.config 声明为 Partial<configType>，但 Partial 只作用于顶层：
+        // 一旦提供 earth，就必须完整满足 Earth（其中 color 必填，material / dragConfig 可选）。
+        // 而 Store.setConfig 实际执行 merge({}, 默认配置, 传入配置) 深合并，
+        // 这里只覆盖 dragConfig 是安全的 —— 断言仅为匹配真实的合并语义，不改变运行时行为。
+      } as any,
     },
   })
   // 透明清屏：需与 config.bgStyle 的 color/opacity 保持一致，否则画布会出现可见的矩形底色
