@@ -39,7 +39,7 @@
 
 | Phase | 内容 | 状态 | 说明 |
 |:---:|---|:---:|---|
-| 0 | 需求分析与技术验证 | 🟡 部分 | PostGIS / Vue / FastAPI 已验证；**高德、Open-Meteo、Amadeus 未验证** |
+| 0 | 需求分析与技术验证 | 🟢 已完成 | 高德 8 端点全部验证通过；国际数据源判定为不在 MVP 范围（见偏差 #19） |
 | 1 | 数据库（ER / 表 / 字段 / 索引 / PostGIS） | 🟢 基本完成 | 需求 17 个实体中已实现 14 个，另加 `City` |
 | 2 | FastAPI（结构 / 模型 / Schema / CRUD / REST） | 🟢 基本完成 | 18 个端点，全部可运行 |
 | 3 | Vue（页面 / 路由 / 状态 / API 请求 / 地图 / UI） | 🟡 部分 | 页面与地图完成；路由、状态管理、API 请求未做 |
@@ -223,9 +223,10 @@ class POI(Base):
 | 13 | `GET /api/transport/search` | 实为 `POST /routes/search` | 表面 | **保留** |
 | 14 | 候选 POI 检索 + 数据整合层 | **已实现**（`app/services/candidates.py`） | **核心** | ✅ **已补**（2026-09-18） |
 | 15 | 规划过程页 / 费用页 / 详情页 | 未实现 | 核心 | **补** |
-| 16 | Phase 0 技术验证（高德 / Open-Meteo / Amadeus） | 未验证 | Phase 尾巴 | **补** —— 高德需先取得 API Key |
+| 16 | Phase 0 技术验证（高德 / Open-Meteo / Amadeus） | ✅ 高德 8 端点已验证 | Phase 尾巴 | ✅ **已补**（2026-09-18）—— 详见 [`API_FEASIBILITY.md`](./API_FEASIBILITY.md) |
 | 17 | Phase 4 数据采集 | 未开始 | 时序 | 按 Phase 推进 |
 | 18 | Phase 7 / 8 动态规划、AI | 未开始 | 时序 | 按 Phase 推进 |
+| 19 | 需求 §14.2 国际区域数据源（OSM / Open-Meteo / Amadeus） | 未接入 | 范围 | **暂不处理** —— §6.2 / §7.2 / §7.3 / §15.4 均将跨境与全球化排除在 MVP 之外；§7.1 的 16 项 MVP 内容也不含酒店与城际交通 |
 
 ---
 
