@@ -67,16 +67,25 @@ python -m uvicorn app.main:app --reload
 TravelMind/
 ├── PRODUCT.md      # 产品定义：用户、目标、设计原则
 ├── DESIGN.md       # 设计系统：色板、字体、动效
-├── docs/           # 需求基线与路线图
+├── docs/           # 需求基线、路线图、API 与数据策略
 ├── frontend/       # Vue 3 前端
 └── backend/        # FastAPI 后端
 ```
 
-需求基线与开发进度见 [`docs/ROADMAP.md`](./docs/ROADMAP.md)。
+需求基线与开发进度见 [`docs/ROADMAP.md`](./docs/ROADMAP.md)，
+数据来源与可信度策略见 [`docs/DATA_STRATEGY.md`](./docs/DATA_STRATEGY.md)。
 
 ## 数据说明
 
-当前版本不接入真实外部数据源。路线为直线估算，演示数据明确标记为 mock —— 刻意不伪造票价、路线与天气。相关接口会返回明确的 mock 标记，而不是看起来像真数据的假值。
+**已接入真实数据的部分**（种子数据）：景点名称、地址、坐标与开放时间原文来自高德 Web 服务接口，
+坐标经 GCJ-02 → WGS84 转换后入库（与将来真实采集走同一条路径）。
+
+**仍为演示数据的部分**：门票价格与游览时长为本地演示值；
+运行时尚未接入高德路线接口，**距离仍为直线估算**，
+且明确标注为 `Mock Data - straight-line estimate`，不伪造通行时间与票价。
+
+数据记录带 `source` / `confidence` 标记，不冒充真实数据。
+相关接口会返回明确的 mock 标记，而不是看起来像真数据的假值。
 
 ## 借鉴
 

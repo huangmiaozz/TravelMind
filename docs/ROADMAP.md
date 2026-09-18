@@ -224,7 +224,7 @@ class POI(Base):
 | 14 | 候选 POI 检索 + 数据整合层 | **已实现**（`app/services/candidates.py`） | **核心** | ✅ **已补**（2026-09-18） |
 | 15 | 规划过程页 / 费用页 / 详情页 | 未实现 | 核心 | **补** |
 | 16 | Phase 0 技术验证（高德 / Open-Meteo / Amadeus） | ✅ 高德 8 端点已验证 | Phase 尾巴 | ✅ **已补**（2026-09-18）—— 详见 [`API_FEASIBILITY.md`](./API_FEASIBILITY.md) |
-| 17 | Phase 4 数据采集 | 未开始 | 时序 | 按 Phase 推进 |
+| 17 | Phase 4 数据采集 | 未开始 | 时序 | 按 Phase 推进 —— 施工依据见 [`DATA_STRATEGY.md`](./DATA_STRATEGY.md) |
 | 18 | Phase 7 / 8 动态规划、AI | 未开始 | 时序 | 按 Phase 推进 |
 | 19 | 需求 §14.2 国际区域数据源（OSM / Open-Meteo / Amadeus） | 未接入 | 范围 | **暂不处理** —— §6.2 / §7.2 / §7.3 / §15.4 均将跨境与全球化排除在 MVP 之外；§7.1 的 16 项 MVP 内容也不含酒店与城际交通 |
 

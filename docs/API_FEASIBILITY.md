@@ -3,6 +3,8 @@
 > Phase 0 技术验证的产出。**不基于假设** —— 所有结论都来自实际调用。
 >
 > 验证日期：2026-09-18 ｜ 验证方式：`backend/scripts/probe_amap.py`（可随时重跑）
+>
+> 相关：多源与可信度策略见 [`DATA_STRATEGY.md`](./DATA_STRATEGY.md)。
 
 ## 结论
 
