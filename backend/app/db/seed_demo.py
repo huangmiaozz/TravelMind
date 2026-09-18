@@ -12,6 +12,7 @@ from app.models.poi_detail import OpeningHour, Ticket
 from app.models.user import User
 from app.models.user_preference import UserPreference
 from app.models.weather import Weather
+from app.services.coordinates import gcj02_to_wgs84
 from app.services.opening_hours import WEEKDAYS, parse_opening_hours
 
 
@@ -23,6 +24,12 @@ DEMO_SOURCE_URL = "about:blank"
 POI_SOURCE = "Amap API (place/text) + local demo values"
 POI_SOURCE_URL = "https://lbs.amap.com/api/webservice/guide/api-advanced/search"
 HOURS_SOURCE = "Amap API (biz_ext.opentime2) + rule parser"
+
+
+def wkt_point(lon_lat: tuple[float, float]) -> WKTElement:
+    """把（经度, 纬度）写成数据库使用的 WGS84 的 WKT POINT。"""
+    lon, lat = lon_lat
+    return WKTElement(f"POINT({lon:.6f} {lat:.6f})", srid=4326)
 
 
 def get_or_create_user(db):
@@ -54,19 +61,28 @@ def get_or_create_city(db):
         select(City).where(City.name == "北京", City.province == "北京市")
     )
     if city is None:
+        # 高德行政区划查询返回的北京市中心（2026-09-18 实取）：
+        #   116.407387, 39.904179 —— **坐标系是 GCJ-02**
+        # 旧代码直接把它当成 WGS84 写进 srid=4326 的列，基准声明是错的；
+        # 现在统一经 gcj02_to_wgs84 转换后再入库。
         city = City(
             name="北京",
             province="北京市",
             country="CN",
-            geom=WKTElement("POINT(116.4074 39.9042)", srid=4326),
+            geom=wkt_point(gcj02_to_wgs84(116.407387, 39.904179)),
         )
         db.add(city)
         db.flush()
     return city
 
 
-def get_or_create_poi(db, city, *, name, category, tags, cost, minutes, point, opening_hours_raw):
+def get_or_create_poi(
+    db, city, *, name, category, tags, cost, minutes, amap_gcj02, opening_hours_raw
+):
     """建立一个演示 POI。
+
+    坐标来自高德 POI 搜索（GCJ-02），入库前统一经 gcj02_to_wgs84 转换 ——
+    与将来真实数据采集走的是同一条路径。
 
     开放时间不再写成统一的 8:30-17:00 —— 那是编造的数据。
     现在写入高德返回的**原文**，再由解析器推出结构化规则，
@@ -80,7 +96,7 @@ def get_or_create_poi(db, city, *, name, category, tags, cost, minutes, point, o
             poi_type="scenic",
             category=category,
             description=f"{name} 的本地演示记录。",
-            geom=WKTElement(point, srid=4326),
+            geom=wkt_point(gcj02_to_wgs84(*amap_gcj02)),
             avg_cost=cost,
             address="北京市本地演示地址",
             source=POI_SOURCE,
@@ -142,9 +158,11 @@ def seed_demo_data() -> None:
     with SessionLocal() as db:
         user = get_or_create_user(db)
         city = get_or_create_city(db)
-        # 开放时间一律用高德返回的原文，不手工编造 ——
-        # 下面三段是 2026-09-18 从 place/text（extensions=all）实取的 biz_ext.opentime2。
-        # 三种写法完全不同（空格有无、分隔符、旺季淡季、全周开放），正好覆盖解析器的各类分支。
+        # 坐标与开放时间一律用高德真实返回，不手工编造 ——
+        # 下面都是 2026-09-18 实取的：坐标来自 place/text（GCJ-02，入库前转换），
+        # 开放时间来自 biz_ext.opentime2（自然语言，由解析器消化）。
+        # 三种开放时间写法完全不同（空格有无、分隔符、旺季淡季、全周开放），
+        # 正好覆盖解析器的各类分支。
         poi_specs: list[dict] = [
             {
                 "name": "故宫博物院（演示）",
@@ -152,7 +170,7 @@ def seed_demo_data() -> None:
                 "tags": {"history": 1.0, "culture": 0.9},
                 "cost": Decimal("60"),
                 "minutes": 150,
-                "point": "POINT(116.3972 39.9163)",
+                "amap_gcj02": (116.397029, 39.917839),
                 "opening_hours_raw": (
                     "旺季4月1日至10月31日 周二至周日 08:30-17:00 16:00停止检票，"
                     "淡季11月1日至3月31日 周二至周日 08:30-16:30 15:30停止检票，"
@@ -165,7 +183,7 @@ def seed_demo_data() -> None:
                 "tags": {"history": 0.9, "culture": 1.0},
                 "cost": Decimal("0"),
                 "minutes": 120,
-                "point": "POINT(116.4074 39.9042)",
+                "amap_gcj02": (116.401304, 39.905374),
                 "opening_hours_raw": (
                     "周一全天关闭(法定节假日除外)；"
                     "11月1日至次年5月31日周二至周日09:00-17:00(16:00停止入馆)；"
@@ -178,7 +196,7 @@ def seed_demo_data() -> None:
                 "tags": {"nature": 0.8, "photography": 0.7},
                 "cost": Decimal("10"),
                 "minutes": 90,
-                "point": "POINT(116.3962 39.9255)",
+                "amap_gcj02": (116.391802, 39.928775),
                 "opening_hours_raw": "周一至周日 06:00-21:00",
             },
         ]
