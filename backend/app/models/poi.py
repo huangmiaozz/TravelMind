@@ -30,6 +30,10 @@ class POI(Base):
     interest_tags: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     # 推荐游玩时长（分钟）。排程依赖它；缺失时由数据整合层回退到默认值。
     visit_minutes: Mapped[int | None] = mapped_column(Integer)
+    # 开放时间原文（高德 biz_ext.opentime2）。
+    # 高德只给自然语言描述、不提供结构化字段，因此原文必须留存：
+    # 解析结果用于排程计算，原文用于展示与人工核对（需求 4.2 的可追溯要求）。
+    opening_hours_raw: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
