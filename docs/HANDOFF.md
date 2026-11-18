@@ -136,8 +136,8 @@
 - 路线/天气装配：`app/services/planning_services.py`（请求级缓存、最小调用间隔、未配置 Key 时降级）、`app/planners/routing.py`（规划器协议）。
 - 迁移：`backend/scripts/migrate_v03_trips_plans.py`（PostgreSQL 可重复执行）。
 - 种子：`backend/scripts/seed_city_data.py`（福州/北京 16+16 POI）；`seed_demo.py` 仅保留为旧演示种子，不再使用。
-- 测试：`backend/tests/`（现有 131 个）。
-- 前端：`frontend/src/App.vue`（视觉 Demo，尚无 API 调用）。
+- 测试：`backend/tests/`（现有 155 个）。
+- 前端：`frontend/src/App.vue`、`frontend/src/api.ts`（已接 `/trips`、`/plans`、餐食/住宿推荐）。
 - 文档：本文件、`PROJECT_PLAN.md`、`API_CONTRACT_V0.3.md`、`FEASIBILITY_STUDY.md`（课程可研报告，不覆盖当前规划）。
 
 ## 8. 验证命令
