@@ -1,25 +1,8 @@
-from datetime import date
-
 import pytest
 from pydantic import ValidationError
 
 from app.db.base import Base
-from app.models import (
-    City,
-    ItineraryItem,
-    Hotel,
-    HotelOffer,
-    OpeningHour,
-    POI,
-    Ticket,
-    Trip,
-    TripDay,
-    User,
-    UserPreference,
-    Weather,
-    TransportOption,
-    TransportPlan,
-)
+from app.models import PlanVersion, Trip
 from app.schemas.trip import TripCreate
 
 
@@ -29,6 +12,7 @@ def test_core_tables_are_registered() -> None:
         "cities",
         "pois",
         "trips",
+        "plan_versions",
         "trip_days",
         "itinerary_items",
         "user_preferences",
@@ -42,33 +26,48 @@ def test_core_tables_are_registered() -> None:
     } <= set(Base.metadata.tables)
 
 
-def test_trip_create_accepts_matching_date_range() -> None:
-    trip = TripCreate(
-        user_id=1,
-        from_city_id=10,
-        to_city_id=20,
-        start_date=date(2026, 10, 12),
-        end_date=date(2026, 10, 17),
-        days_count=5,
-    )
-
-    assert trip.days_count == 5
+def test_trip_create_requires_a_city() -> None:
+    with pytest.raises(ValidationError, match="city"):
+        TripCreate(user_id=1, title="周末")
 
 
-def test_trip_create_rejects_mismatched_date_range() -> None:
-    with pytest.raises(ValidationError, match="days_count"):
-        TripCreate(
-            user_id=1,
-            from_city_id=10,
-            to_city_id=20,
-            start_date=date(2026, 10, 12),
-            end_date=date(2026, 10, 17),
-            days_count=6,
-        )
+def test_trip_create_defaults_to_demo_user_and_accepts_title() -> None:
+    trip = TripCreate(city="北京", title="北京两日")
+
+    assert trip.user_id == 1
+    assert trip.city == "北京"
+    assert trip.title == "北京两日"
 
 
-def test_interest_weights_must_be_between_zero_and_one() -> None:
-    from app.schemas.user_preference import UserPreferencePayload
+def test_trip_model_no_longer_requires_cross_city_dates() -> None:
+    columns = set(Trip.__table__.columns.keys())
 
-    with pytest.raises(ValidationError, match="between 0 and 1"):
-        UserPreferencePayload(interests={"history": 1.1})
+    assert {"destination_city_id", "destination_city_name", "title"} <= columns
+    assert "from_city_id" not in columns
+    assert "to_city_id" not in columns
+    assert "end_date" not in columns
+
+
+def test_plan_version_has_snapshot_and_summary_fields() -> None:
+    columns = set(PlanVersion.__table__.columns.keys())
+
+    assert {
+        "trip_id",
+        "version_no",
+        "status",
+        "start_date",
+        "days_count",
+        "request_json",
+        "plan_json",
+        "data_snapshot",
+        "total_estimated_cost",
+        "generated_at",
+    } <= columns
+
+
+def test_plan_version_unique_constraint_is_declared() -> None:
+    names = {
+        constraint.name for constraint in PlanVersion.__table__.constraints
+    }
+
+    assert "uq_plan_versions_trip_version" in names

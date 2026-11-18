@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.db.session import get_db
 from app.main import app
-from app.planners.models import PlanningCandidate
+from app.planners.models import OpeningWindow, PlanningCandidate
 from app.services.candidates import CityNotFoundError
 
 
@@ -11,11 +11,14 @@ client = TestClient(app)
 
 PLANNER_REQUEST = {
     "city": "北京",
-    "travel_date": "2026-10-12",
-    "interests": {"history": 1.0},
+    "start_date": "2026-10-12",
+    "days": 1,
+    "budget_total": 100,
+    "interests": {"history": 100},
     "daily_start": "09:00:00",
     "daily_end": "13:00:00",
     "max_daily_items": 1,
+    "max_walk_km": 5,
 }
 
 
@@ -40,38 +43,13 @@ def test_health_check() -> None:
     }
 
 
-def test_create_trip_validates_date_range_before_database_access() -> None:
-    response = client.post(
-        "/api/v1/trips",
-        json={
-            "user_id": 1,
-            "from_city_id": 10,
-            "to_city_id": 20,
-            "start_date": "2026-10-12",
-            "end_date": "2026-10-17",
-            "days_count": 6,
-        },
-    )
-
-    assert response.status_code == 422
-    assert "days_count" in response.text
-
-
 def test_trip_crud_routes_are_registered() -> None:
     paths = set(app.openapi()["paths"])
 
     assert "/api/v1/trips" in paths
     assert "/api/v1/trips/{trip_id}" in paths
-
-
-def test_trip_update_requires_complete_date_update() -> None:
-    response = client.put(
-        "/api/v1/trips/1",
-        json={"start_date": "2026-10-12", "budget_total": 9000},
-    )
-
-    assert response.status_code == 422
-    assert "updated together" in response.text
+    assert "/api/v1/trips/{trip_id}/plans" in paths
+    assert "/api/v1/plans/{plan_id}" in paths
 
 
 def test_user_routes_are_registered() -> None:
@@ -142,7 +120,7 @@ def test_route_calculation_marks_estimate_as_mock_data() -> None:
     assert response.json()["source"].startswith("Mock Data")
 
 
-def test_planner_endpoint_returns_scheduled_items(monkeypatch) -> None:
+def test_planner_endpoint_returns_multi_day_contract(monkeypatch) -> None:
     """接口层只负责编排：候选检索被替换为固定数据，以隔离数据库依赖。
 
     真实的检索逻辑由 tests/test_candidates.py 单测覆盖，
@@ -159,8 +137,183 @@ def test_planner_endpoint_returns_scheduled_items(monkeypatch) -> None:
         app.dependency_overrides.pop(get_db, None)
 
     assert response.status_code == 200
-    assert response.json()["items"][0]["name"] == "历史景点"
-    assert response.json()["source"] == "Rule-based weighted planner"
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["weather_known"] is False
+    assert body["days"][0]["travel_date"] == "2026-10-12"
+    assert body["days"][0]["items"][0]["name"] == "历史景点"
+    assert body["days"][0]["items"][0]["opening_known"] is False
+    assert body["total_estimated_cost"] == 60
+    assert body["budget_total"] == 100
+    assert body["budget_difference"] == 40
+    assert body["over_budget"] is False
+    assert any("天气未知" in note for note in body["notes"])
+    assert any("步行距离" in note for note in body["notes"])
+    assert body["source"] == "Rule-based multi-day planner"
+
+
+def test_planner_interest_scale_is_normalized_for_scorer(monkeypatch) -> None:
+    """接口的 0–100 兴趣刻度必须归一化后才能交给评分器。"""
+    from app.api.v1.planner import load_planner_context
+    from app.schemas.planner import PlannerPlanRequest
+
+    monkeypatch.setattr(
+        "app.api.v1.planner.candidates_for_city",
+        lambda db, city: [HISTORY_CANDIDATE],
+    )
+    payload = PlannerPlanRequest(
+        city="北京",
+        start_date="2026-10-12",
+        interests={"history": 50},
+    )
+
+    _, preferences = load_planner_context(None, payload)
+
+    assert preferences.interests == {"history": 0.5}
+
+
+def test_planner_endpoint_marks_unset_budget(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.planner.candidates_for_city",
+        lambda db, city: [HISTORY_CANDIDATE],
+    )
+    app.dependency_overrides[get_db] = lambda: None
+    try:
+        response = client.post(
+            "/api/v1/planner/generate",
+            json={**PLANNER_REQUEST, "budget_total": 0},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    body = response.json()
+    assert body["budget_total"] == 0
+    assert body["budget_difference"] == 0
+    assert body["over_budget"] is False
+    assert any("未设置预算" in note for note in body["notes"])
+
+
+def test_planner_endpoint_plans_multiple_days_and_flags_over_budget(
+    monkeypatch,
+) -> None:
+    second = PlanningCandidate(
+        poi_id=2,
+        name="第二景点",
+        category="historical",
+        interest_tags={"history": 1.0},
+        estimated_cost=80,
+        visit_minutes=60,
+        confidence=0.9,
+    )
+    monkeypatch.setattr(
+        "app.api.v1.planner.candidates_for_city",
+        lambda db, city: [HISTORY_CANDIDATE, second],
+    )
+    app.dependency_overrides[get_db] = lambda: None
+    try:
+        response = client.post(
+            "/api/v1/planner/generate",
+            json={**PLANNER_REQUEST, "days": 2, "budget_total": 100},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["days"]) == 2
+    assert [day["items"][0]["name"] for day in body["days"]] == ["历史景点", "第二景点"]
+    assert body["total_estimated_cost"] == 140
+    assert body["budget_difference"] == -40
+    assert body["over_budget"] is True
+    assert body["status"] == "ok"
+
+
+def test_planner_endpoint_returns_empty_status_instead_of_error(monkeypatch) -> None:
+    closed = tuple(
+        OpeningWindow(day, is_closed=True)
+        for day in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+    )
+    closed_candidate = PlanningCandidate(
+        poi_id=3,
+        name="周一闭馆景点",
+        category="museum",
+        interest_tags={"history": 1.0},
+        estimated_cost=0,
+        visit_minutes=60,
+        confidence=0.9,
+        opening_windows=closed,
+    )
+    monkeypatch.setattr(
+        "app.api.v1.planner.candidates_for_city",
+        lambda db, city: [closed_candidate],
+    )
+    app.dependency_overrides[get_db] = lambda: None
+    try:
+        response = client.post(
+            "/api/v1/planner/generate",
+            json={**PLANNER_REQUEST, "days": 2},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "empty"
+    assert body["days"][0]["items"] == []
+    assert body["days"][1]["items"] == []
+    assert body["total_estimated_cost"] == 0
+    assert any("没有可安排的景点" in note for note in body["notes"])
+
+
+def test_planner_options_endpoint_returns_multi_day_trips(monkeypatch) -> None:
+    candidates = [
+        PlanningCandidate(
+            poi_id=index,
+            name=f"景点 {index}",
+            category="historical",
+            interest_tags={"history": 1.0},
+            estimated_cost=20,
+            visit_minutes=30,
+            confidence=0.9,
+        )
+        for index in range(1, 5)
+    ]
+    monkeypatch.setattr(
+        "app.api.v1.planner.candidates_for_city",
+        lambda db, city: candidates,
+    )
+    app.dependency_overrides[get_db] = lambda: None
+    try:
+        response = client.post(
+            "/api/v1/planner/generate-options",
+            json={**PLANNER_REQUEST, "days": 2, "max_daily_items": 2},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200
+    plans = response.json()["plans"]
+    assert len(plans) == 4
+    assert all(len(plan["days"]) == 2 for plan in plans)
+    # 「最舒适」策略减少每日条目，所以整趟费用更低；其余策略排满两天。
+    totals = {plan["plan_type"]: plan["total_estimated_cost"] for plan in plans}
+    assert totals.pop("most_comfortable") == 40
+    assert set(totals.values()) == {80}
+
+
+def test_planner_endpoint_rejects_legacy_single_date_payload() -> None:
+    """旧契约的 travel_date 不再被接受，避免两套日期语义并存。"""
+    legacy = {
+        key: value
+        for key, value in PLANNER_REQUEST.items()
+        if key != "start_date"
+    }
+    legacy["travel_date"] = "2026-10-12"
+
+    response = client.post("/api/v1/planner/generate", json=legacy)
+
+    assert response.status_code == 422
+    assert "start_date" in response.text
 
 
 def test_planner_endpoint_returns_404_for_unknown_city(monkeypatch) -> None:

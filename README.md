@@ -4,7 +4,14 @@
 
 国内旅行规划系统。把用户约束、可追溯的旅行数据与规划算法连起来，生成**可比较、可解释、可调整**的旅行方案。
 
-当前版本 **v0.1.0（初步开发 Demo）**：前端叙事与地图体验已完成，后端 API 与规则规划器可独立运行，两端尚未联通。
+当前版本 **v0.1.0（初步开发 Demo）**：前端叙事与地图体验已完成，后端 API 与规则规划器可独立运行，两端尚未联通。当前需求和开发计划统一见 [`docs/PROJECT_PLAN.md`](./docs/PROJECT_PLAN.md)；课程第一次实验的可行性报告见 [`docs/FEASIBILITY_STUDY.md`](./docs/FEASIBILITY_STUDY.md)。下文功能列表描述现有界面，不代表目标需求已完成。
+
+> **接手开发先读**
+>
+> - [`docs/HANDOFF.md`](./docs/HANDOFF.md) — 当前真实状态、已锁定决策、下一步和禁止事项
+> - [`docs/PROJECT_PLAN.md`](./docs/PROJECT_PLAN.md) — 唯一需求与范围依据
+> - [`docs/API_CONTRACT_V0.3.md`](./docs/API_CONTRACT_V0.3.md) — 目标接口契约
+> - [`AGENTS.md`](./AGENTS.md) — 给后续 AI/开发者的硬约束
 
 ## 功能
 
@@ -18,9 +25,11 @@
 
 **旅行规划**
 
-- 设定出发地、目的地、日期、天数、预算与交通偏好
+- 设定目的地、日期、天数、预算与交通偏好
 - 节奏偏好多选：历史文化 / 自然风光 / 本地美食 / 慢一点
-- 结果页预留四种方案取向：综合最优 / 更省钱 / 更舒适 / 兴趣优先
+- 当前界面暂留四种演示方案取向；这只是 UI 占位，不代表最终方案数量或分类固定。正式规划结果由可用方案决定。
+
+天气应实际影响行程安排和方案评价；目前前后端尚未接入实时天气规划。
 
 ## 技术栈
 
@@ -59,27 +68,39 @@ python -m uvicorn app.main:app --reload
 - 交互式文档：`http://127.0.0.1:8000/docs`
 - 测试：`python -m pytest -q`
 
-更多后端细节见 [`backend/README.md`](./backend/README.md)。
+### 高德调用模式
+
+默认 `AMAP_MODE=mock`：不调用高德，路线/天气/餐厅/住宿使用演示数据，反复调 UI 不消耗配额。
+
+在 `backend/.env` 中切换：
+
+```text
+AMAP_MODE=mock    # 本地演示，不请求高德
+AMAP_MODE=cache   # 先读进程内缓存，未命中再请求高德
+AMAP_MODE=live    # 每次请求高德，不读跨请求缓存
+```
+
+修改后重启后端。`cache` 模式缓存：路线 24 小时、天气 30 分钟、餐厅/住宿 6 小时；重启进程会清空。
 
 ## 项目结构
 
 ```text
 TravelMind/
-├── PRODUCT.md      # 产品定义：用户、目标、设计原则
-├── DESIGN.md       # 设计系统：色板、字体、动效
-├── docs/           # 需求原文、SRS、路线图、API 与数据策略
+├── README.md
+├── AGENTS.md                 # 后续 AI/开发者接手约定
+├── docs/
+│   ├── PROJECT_PLAN.md       # 当前唯一需求与开发计划
+│   ├── HANDOFF.md            # 当前状态、决策与下一步
+│   ├── API_CONTRACT_V0.3.md  # 目标接口契约
+│   └── FEASIBILITY_STUDY.md  # 课程第一次实验可行性报告
 ├── frontend/       # Vue 3 前端
 └── backend/        # FastAPI 后端
 ```
 
-需求原文（权威基线）见 [`docs/REQUIREMENTS_ORIGINAL.md`](./docs/REQUIREMENTS_ORIGINAL.md)，
-开发进度与偏离登记见 [`docs/ROADMAP.md`](./docs/ROADMAP.md)，
-数据来源与可信度策略见 [`docs/DATA_STRATEGY.md`](./docs/DATA_STRATEGY.md)。
-
 ## 数据说明
 
-**已接入真实数据的部分**（种子数据）：景点名称、地址、坐标与开放时间原文来自高德 Web 服务接口，
-坐标经 GCJ-02 → WGS84 转换后入库（与将来真实采集走同一条路径）。
+**种子数据中的地图来源字段**：景点名称、坐标和开放时间原文来自高德 Web 服务接口，
+坐标经 GCJ-02 → WGS84 转换后入库。
 
 **仍为演示数据的部分**：门票价格与游览时长为本地演示值；
 运行时尚未接入高德路线接口，**距离仍为直线估算**，

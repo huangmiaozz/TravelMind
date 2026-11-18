@@ -25,6 +25,25 @@ DEFAULT_VISIT_MINUTES = 90
 # 单次检索上限，避免大城市的全量 POI 拖慢规划请求
 DEFAULT_CANDIDATE_LIMIT = 200
 
+# 天气敏感的粗略类别映射。高德没有可靠的“室内/户外”字段，这里只按明确的
+# 类别/类型关键词判断；命中不了的按不敏感处理，避免凭空猜测。
+_WEATHER_SENSITIVE_TOKENS = (
+    "park",
+    "scenic",
+    "nature",
+    "outdoor",
+    "hiking",
+    "beach",
+    "garden",
+    "公园",
+    "风景",
+    "景区",
+    "户外",
+    "海滩",
+    "山",
+    "湖",
+)
+
 
 class CityNotFoundError(LookupError):
     """目的地城市在库中不存在。"""
@@ -91,18 +110,26 @@ def build_candidate(poi: POI, *, latitude: float, longitude: float) -> PlanningC
 
     纯函数，不依赖数据库会话，便于单测。
     """
+    category = poi.category or poi.poi_type
     return PlanningCandidate(
         poi_id=poi.id,
         name=poi.name,
-        category=poi.category or poi.poi_type,
+        category=category,
         interest_tags=normalize_tags(poi.interest_tags),
         estimated_cost=ticket_cost(poi.tickets, fallback=poi.avg_cost),
         visit_minutes=poi.visit_minutes or DEFAULT_VISIT_MINUTES,
         confidence=float(poi.confidence) if poi.confidence is not None else 0.0,
+        weather_sensitive=is_weather_sensitive(category, poi.poi_type),
         latitude=latitude,
         longitude=longitude,
         opening_windows=opening_windows(poi.opening_hours),
     )
+
+
+def is_weather_sensitive(category: str | None, poi_type: str | None) -> bool:
+    """按类别/类型关键词判断是否受天气影响；无法判断时返回 False。"""
+    text = f"{category or ''} {poi_type or ''}".lower()
+    return any(token in text for token in _WEATHER_SENSITIVE_TOKENS)
 
 
 def normalize_tags(raw: dict | None) -> dict[str, float]:

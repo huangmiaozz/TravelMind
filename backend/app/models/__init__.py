@@ -2,7 +2,7 @@ from app.models.city import City
 from app.models.poi import POI
 from app.models.poi_detail import OpeningHour, Ticket
 from app.models.hotel import Hotel, HotelOffer
-from app.models.trip import ItineraryItem, Trip, TripDay
+from app.models.trip import ItineraryItem, PlanVersion, Trip, TripDay
 from app.models.user import User
 from app.models.user_preference import UserPreference
 from app.models.weather import Weather
@@ -18,6 +18,7 @@ __all__ = [
 	"Hotel",
 	"HotelOffer",
 	"Trip",
+	"PlanVersion",
 	"TripDay",
 	"User",
 	"UserPreference",

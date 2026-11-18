@@ -15,6 +15,8 @@ class City(Base):
     name: Mapped[str] = mapped_column(String(128), index=True)
     province: Mapped[str | None] = mapped_column(String(128), index=True)
     country: Mapped[str] = mapped_column(String(64), default="CN", nullable=False)
+    # 高德行政区划编码，天气接口按 adcode 查询；未知时不要猜，天气标 unknown。
+    amap_adcode: Mapped[str | None] = mapped_column(String(16))
     geom: Mapped[object] = mapped_column(Geometry("POINT", srid=4326), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -22,9 +24,4 @@ class City(Base):
     )
 
     pois: Mapped[list["POI"]] = relationship(back_populates="city")
-    trips_from: Mapped[list["Trip"]] = relationship(
-        back_populates="from_city", foreign_keys="Trip.from_city_id"
-    )
-    trips_to: Mapped[list["Trip"]] = relationship(
-        back_populates="to_city", foreign_keys="Trip.to_city_id"
-    )
+    trips: Mapped[list["Trip"]] = relationship(back_populates="destination_city")

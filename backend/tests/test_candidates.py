@@ -125,6 +125,24 @@ def test_build_candidate_defaults_confidence_to_zero() -> None:
     assert candidate.confidence == 0.0
 
 
+def test_build_candidate_marks_park_as_weather_sensitive() -> None:
+    candidate = build_candidate(
+        make_poi(category="park", poi_type="scenic"), latitude=0.0, longitude=0.0
+    )
+
+    assert candidate.weather_sensitive is True
+
+
+def test_build_candidate_keeps_museum_indoor() -> None:
+    candidate = build_candidate(
+        make_poi(category="museum", poi_type="museum"),
+        latitude=0.0,
+        longitude=0.0,
+    )
+
+    assert candidate.weather_sensitive is False
+
+
 # —— 开放窗口 ——
 
 

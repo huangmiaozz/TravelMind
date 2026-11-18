@@ -69,10 +69,14 @@ def get_or_create_city(db):
             name="北京",
             province="北京市",
             country="CN",
+            amap_adcode="110000",
             geom=wkt_point(gcj02_to_wgs84(116.407387, 39.904179)),
         )
         db.add(city)
         db.flush()
+    elif not city.amap_adcode:
+        # 旧库补 adcode；天气接口只认 adcode，不能靠城市名猜。
+        city.amap_adcode = "110000"
     return city
 
 
