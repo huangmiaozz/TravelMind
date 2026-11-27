@@ -143,6 +143,15 @@ class PlanningCandidate:
     confidence: float
     weather_sensitive: bool = False
     # —— 以下由数据整合层填充，均带默认值，保证既有位置参数调用不受影响 ——
+    # 开放时间可信度：confirmed / estimated / unknown。
+    opening_status: str = "unknown"
+    # 门票单价与核验状态；没有 Ticket 记录时为 unknown。
+    ticket_price: float | None = None
+    ticket_child_price: float | None = None
+    ticket_status: str = "unknown"
+    ticket_source: str | None = None
+    ticket_source_url: str | None = None
+    ticket_verified_at: str | None = None
     # 坐标（WGS84）。为 None 表示库里缺几何信息，此时无法参与距离计算。
     latitude: float | None = None
     longitude: float | None = None
@@ -171,6 +180,15 @@ class PlannedItem:
     # 该条目访问时段的开放时间是**已知**还是未知。
     # 默认 False 是保守取值：没经过 `opening_filter` 判定的构造不应声称知道。
     opening_known: bool = False
+    opening_status: str = "unknown"
+    # 门票按成人/儿童票种留出原始单价；费用汇总时再乘人数。
+    # 状态为 confirmed / estimated / unknown，未知不能按 0 元确认。
+    ticket_price: float | None = None
+    ticket_child_price: float | None = None
+    ticket_status: str = "unknown"
+    ticket_source: str | None = None
+    ticket_source_url: str | None = None
+    ticket_verified_at: str | None = None
     # WGS84 坐标，静态地图按 GCJ-02 转换后标注。
     latitude: float | None = None
     longitude: float | None = None

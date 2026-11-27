@@ -71,8 +71,16 @@ class PlannedItemResponse(BaseModel):
     score: float
     # False 表示该景点的开放时间未知，用户需自行核实。
     opening_known: bool
+    opening_status: str = "unknown"
     # 当天游览顺序，从 1 开始；静态地图按这个编号标注。
     order: int = 0
+    # 门票单价与核验状态；费用汇总按人数乘单价，未知不能按 0 元确认。
+    ticket_price: float | None = None
+    ticket_child_price: float | None = None
+    ticket_status: str = "unknown"
+    ticket_source: str | None = None
+    ticket_source_url: str | None = None
+    ticket_verified_at: str | None = None
     # WGS84 坐标；旧版本 plan_json 可能没有，前端/地图要允许为空。
     latitude: float | None = None
     longitude: float | None = None
@@ -143,6 +151,9 @@ class DayPlanResponse(BaseModel):
 class CostBreakdownResponse(BaseModel):
     tickets_amount: float
     tickets_status: str
+    tickets_confirmed_amount: float = 0
+    tickets_estimated_amount: float = 0
+    tickets_unknown_count: int = 0
     transport_amount: float
     transport_status: str
     meals_amount: float
@@ -154,6 +165,7 @@ class CostBreakdownResponse(BaseModel):
     budget_difference: float
     budget_complete: bool
     unknown_items: list[str] = Field(default_factory=list)
+    updated_at: str | None = None
 
 
 class TripPlanResponse(BaseModel):

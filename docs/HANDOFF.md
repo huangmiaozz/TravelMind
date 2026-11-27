@@ -1,6 +1,6 @@
 # TravelMind 开发交接（Handoff）
 
-> 最后更新：2026-11-17
+> 最后更新：2026-11-26
 >
 > 读者：接手的开发者或 AI。只读本文件 + [`PROJECT_PLAN.md`](./PROJECT_PLAN.md) + [`API_CONTRACT_V0.3.md`](./API_CONTRACT_V0.3.md)，就能恢复当前上下文。
 >
@@ -9,7 +9,7 @@
 ## 0. 五分钟恢复上下文
 
 1. `git status`：工作区有未提交改动，**保留与当前任务无关的文件，不要回滚**。
-2. `cd backend && python -m pytest -q`：期望 **155 passed, 1 warning**。
+2. `cd backend && python -m pytest -q`：期望 **190 passed, 1 warning**。
    - 默认 `AMAP_MODE=mock`：不调用高德，路线/天气/餐厅/住宿均为演示数据。
    - 切真实数据：在 `backend/.env` 写 `AMAP_MODE=cache`（缓存优先）或 `AMAP_MODE=live`（每次真实调用），重启后端。
    - `cache` 的进程内缓存：路线 24h、天气 30min、餐厅/住宿 6h；重启进程会清空。
@@ -17,7 +17,7 @@
    - 本文件：当前状态、已锁定决策、下一步、禁止事项；
    - [`PROJECT_PLAN.md`](./PROJECT_PLAN.md)：唯一需求/范围依据；
    - [`API_CONTRACT_V0.3.md`](./API_CONTRACT_V0.3.md)：目标接口契约。
-4. 下一项任务：**准备福州/北京 15–20 个 POI 与官方核验**（见 §6 第 3 步）。
+4. 下一项任务：**补 PlanCost/PlanDay 规范化拆表、全局限流或账号体系**；重点景点官方票价/开放时间已核验，见 §6。
 
 ## 1. 一句话目标
 
@@ -61,27 +61,33 @@
 - 公交方案中的每段 ≥300 m 接驳步行也会补一个骑行耗时；页面把首行标为“公共交通总计”，分段用 ①②③ 编号，并在天气中高风险时提示“步行和骑行体验可能受影响”。
 - 公交/地铁明细已解析：线路名、类型、上车站、下车站、经停站数、该段距离/耗时，以及前后步行接驳；结果页在交通段下方逐条显示。
 - 新增整趟费用模型：`app/services/costs.py` 合计门票（未核验时标 unknown）、市内交通、餐饮估算、住宿估算；餐饮按人数×天数、住宿按房间×晚数，城市参考值可被请求覆盖；响应新增 `costs` 拆分和 `budget_complete/unknown_items`。
-- 用餐时间块：午餐 12:00–13:00（60 分钟）、晚餐 18:00–19:30（90 分钟），景点访问与用餐重叠时整体顺延；结果页显示用餐块和“推荐餐厅”按钮。
-- 用餐推荐：`GET /plans/{id}/days/{day_index}/meals/{meal_type}/suggestions` 用高德 place/around 返回附近餐厅（名称、地址、距离、人均、评分），前端弹窗展示，用户选择只保存在当前页面，不做订座。
-- 住宿推荐：`GET /plans/{id}/stays/suggestions` 按行程景点质心查高德附近住宿，按到全部景点的平均直线距离排序；`100000` 大类中过滤招待所/青年旅舍/旅馆/民宿/客栈/公寓和校内场所，只保留宾馆酒店类；前端独立“住宿推荐”页，当前整趟选一家，可扩展为多晚/多酒店，不做订房。
+- 用餐时间块：午餐 12:00–14:00（120 分钟，含去餐厅/返回）、晚餐 18:00–19:30（90 分钟），景点访问与用餐重叠时整体顺延；结果页显示用餐块和“推荐餐厅”按钮；八达岭晚餐先回到耗时最短的返程门户（清河站/北京北站/德胜门），再在市区推荐。
+- 餐饮区域推荐：`GET /plans/{id}/days/{day}/meals/{meal}/areas` 按实际路线时间筛选区域（午餐交通 ≤50 分钟、晚餐 ≤35 分钟），只保留可行区域；`.../areas/{area_id}/restaurants` 返回区域内餐厅，按评分/连锁/本地精选打标并过滤低评分；`.../areas/{area_id}/restaurants/search?q=` 支持区域内搜索；`.../nearby` 返回“附近其他”，`.../nearby/search?q=` 支持在“附近其他”内搜索，仍排除区域并过时间闸门。
+- 餐饮区域数据在 `backend/app/db/dining_areas.json`（北京/福州），区域分美食街/商场/商圈，含 `weather_friendly`；热度是人工先验，只参与排序，不决定时间可行性。
+- 住宿推荐：`GET /plans/{id}/stays/suggestions` 按行程中位数中心、用高德 `sortrule=weight` 取前 25 家做热度初筛；过滤评分 <4.0、超住宿预算、纯宾馆，按档次/区域多样性/日首尾通勤排序；`GET /plans/{id}/stays/search?q=` 支持用户按酒店/品牌搜索，结果同样计算通勤。
+- 酒店实时房价：接入 RollingGo Hotel MCP（仅 search/detail，不下单/支付），按入住日期、晚数、人数和房间数查询最低可订房型；优先精确名称，名称因“北京/分店括注”不同时，只有基础名一致且地址匹配才接受；品牌不同（如汉庭 vs 大正）仍拒绝。返回 `price_status/price_source/price_checked_at/price_note/over_budget`：有价 `quoted`，无房型 `no_availability`，未匹配 `not_found`，查价失败 `query_failed`；过去日期不查价。所有无价状态都保持 `cost_amount=null`，不按 0 元/免费处理。
 - 高德调用模式：`AMAP_MODE=mock|cache|live`，默认 `mock`；mock 不发起外部请求并生成本地示意图；cache 使用进程内跨请求缓存（路线 24h、天气 30min、餐厅/住宿 6h），未命中才调高德；live 绕过跨请求缓存。Mock 方案的 notes 和 `data_snapshot` 标 `mock`。
-- 高德一次公交查询返回的多个 `transits` 全部保留为备选方案，按时间、费用、步行等评分选择；不再只取第一条。
+- 高德一次公交查询会返回多个 `transits`；当前用 `strategy=0` 请求最快捷，并只取耗时最短的一条进入候选，避免更慢的公交方案被费用/步行权重顶到前面。
 - 请求级缓存与最小调用间隔：同一路段/城市只查一次，默认 0.05 s 间隔；未配置 Key 或无 adcode 时显式降级为 unknown。
 - `PlanningCandidate.weather_sensitive` 由类别/类型关键词映射填充（公园、景区、自然类为敏感；博物馆等按不敏感）。
 - `/api/v1/trips` 创建/列表/详情/更新/删除，`/api/v1/trips/{id}/plans` 生成与版本列表，`/api/v1/plans/{id}` 查看/删除。
 - 福州、北京各接入 **16 个 POI**（高德 place/text + 人工类别/标签/游玩时长），Fuzhou adcode `350100`、北京 `110000`；旧 3 个“（演示）”POI 已移除。
 - 每日静态顺序图：`GET /api/v1/plans/{id}/days/{day_index}/map` 后端代理高德底图，再用 Pillow 按 Web Mercator 画 1→2→3 编号；失败返回 502，前端降级为列表。
 - 前端闭环：`frontend/src/api.ts` + `App.vue` 已接 `/trips` 与 `/trips/{id}/plans`，结果页展示逐日景点、路线段、天气、步行距离、静态图、预算差额和边界说明；生成后自动保存版本，可重新生成。
+- 兴趣/节奏输入：创建页提供历史文化/自然风光/本地美食 3 个 0–100 滑块，以及 0–100 的旅行节奏滑块；节奏同时决定每日条目上限（2/3/4）和行程缓冲，不再使用固定标签权重。
+- 门票按人数计价：景点条目保留成人/儿童单价和 `ticket_status`，费用汇总分别乘成人/儿童人数；没有儿童票时按成人价保守估算并标注。
+- 费用三态：门票可输出 `confirmed/estimated/partial/unknown`，交通输出 `estimated/partial`，餐饮输出 `estimated/partial`，住宿可输出 `quoted`（RollingGo 实时报价）/`estimated`/`unknown`；门票额外给出 `tickets_confirmed_amount`、`tickets_estimated_amount`、`tickets_unknown_count`，未知金额不按 0 元确认。
+- 官方票价/开放时间：福州、北京各 5 个重点景点写入来源、核验日期和 URL（`app/db/tickets.json`、`app/db/openings.json`）；季节价/儿童价未精确建模的部分标 `estimated`，不伪装成 confirmed。
+- 版本历史 UI：结果页可展开版本列表，查看旧版本、删除版本；删除当前版本后自动切到剩余最新版本。
+- 餐食/住宿选择保存：选择写入 `PlanVersion.selection_json`，重新打开同一版本会恢复，不影响只读的 `plan_json`。
 - GCJ-02/WGS84 坐标转换。
-- 后端测试 **155 passed, 1 warning**；前端 `vue-tsc --noEmit` 和 `vite build` 通过。
+- 后端测试 **190 passed, 1 warning**；前端 `vue-tsc --noEmit` 和 `vite build` 通过。
 
 未实现：
 
-- 每城 5 个重点景点的官方票价/开放时间核验；当前 Ticket 为空，页面逐项标“票价待核”；
-- 前端版本历史列表/加载/删除（后端接口已有）、账号体系；
-- `PlanCost` / `PlanDay` / `PlanItem` / `PlanLeg` 规范化拆表；
-- 门票按人数放大、门票/交通的 confirmed/estimated/unknown 三态和 `PlanCost` 规范化；当前费用拆分已有但门票仍为空。
-- 跨请求缓存/全局限流、Alembic 迁移、城市 adcode/别名批量维护。
+- `PlanCost` / `PlanDay` / `PlanItem` / `PlanLeg` 规范化拆表；当前仍以 `PlanVersion.plan_json` 快照为主。
+- 账号体系、登录和多用户隔离。
+- 全局限流、Alembic 迁移、城市 adcode/别名批量维护。
 
 ### 贡献归属（内部记录，不写入课程报告）
 
@@ -116,27 +122,31 @@
 
 1. ✅ **持久化模型（2026-11-17 完成）**：`PlanVersion`（`trip_id`、`version_no`、`request_json`、`plan_json`、摘要字段）；`Trip` 改单城市；v1 不拆 `PlanDay/Item` 表。迁移脚本见 `backend/scripts/migrate_v03_trips_plans.py`。
 2. ✅ **接入规划器（2026-11-17 完成）**：`AmapClient` 已用于路线段、步行累计、`max_walk_km` 硬约束和按日期天气；请求级缓存/最小间隔/失败降级已补；测试用固定 fixture。
-3. 🟡 **数据（2026-11-17 第一版）**：福州、北京各 16 个 POI 已入库，福州 adcode 已补；**每城 5 个重点景点的官方票价/开放时间核验尚未完成**，Ticket 仍为空。
+3. ✅ **数据（2026-11-26 完成核验）**：福州、北京各 16 个 POI 已入库；各 5 个重点景点写入官方票价/开放时间、来源 URL 和核验日期。季节价/儿童价未精确建模的条目保持 `estimated`。
 4. ✅ **静态地图（2026-11-17 完成）**：后端代理高德底图 + Pillow 画编号，按 1→2→3 标注；失败 502、前端降级。
-5. ✅ **前端闭环（2026-11-17 完成）**：表单 → 创建 Trip → 生成 Plan → 逐日行程/路线/天气/步行/静态图 → 自动保存版本 → 重新生成；版本历史列表 UI 尚未做。
-6. **补费用与官方数据**：人数计价、餐饮/住宿/市内交通估算、费用三态；每城 5 个重点景点官方核验。
+5. ✅ **前端闭环 + 版本历史（2026-11-26 完成）**：表单 → 创建 Trip → 生成 Plan → 逐日行程/路线/天气/步行/静态图 → 自动保存版本 → 重新生成；版本列表支持查看/删除，餐厅和住宿选择随版本保存。
+6. ✅ **费用与官方数据（2026-11-26 完成）**：门票人数计价、费用三态、餐饮/住宿/市内交通估算；每城 5 个重点景点官方票价/开放时间核验。规范化拆表仍未做。
 7. **Phase 2（有余力再做）**：出行执行清单/购票指引（官方渠道、预约规则、链接、住宿区域、餐饮预算）；不做下单。
 8. **回归/试用**：路线失败、天气未知、票价未知、超预算、闭馆、两城、版本复现、Key 不泄露。
 
 ## 7. 代码地图
 
 - 规划器：`backend/app/planners/`（`models.py`、`generator.py`、`transport_selector.py`、`trip.py`、`multi_plan.py`、`scorer.py`、`opening_filter.py`）。
-- 高德适配：`backend/app/services/amap.py`（路线/天气；已接入 v0.3 规划接口）。
+- 餐饮区域：`app/db/dining_areas.json`（北京/福州人工先验）、`app/services/dining_areas.py`、`app/services/meal_recommendations.py`（时间闸门与区域/附近排序）、`app/services/restaurant_quality.py`（评分/连锁/本地精选标签）。
+- 住宿门户/评分：`app/db/access_gateways.json`（八达岭德胜门/清河站/北京北站）、`app/services/hotel_recommendations.py`（日首尾通勤 + 最大通勤惩罚）。
+- 官方核验数据：`app/db/tickets.json`（票价/来源/状态）、`app/db/openings.json`（开放时间原文/来源），由 `scripts/seed_city_data.py` 幂等写入。
+- 高德适配：`backend/app/services/amap.py`（路线/天气/餐厅/住宿；已接入 v0.3 规划接口）。
+- 酒店房价：`backend/app/services/rollinggo.py`（RollingGo Hotel MCP 的 search/detail 适配、精确名称 + 同基础名/地址回退、30 分钟缓存、失败降级）。
 - 候选检索：`backend/app/services/candidates.py`；城市名精确匹配，City 已有 `amap_adcode`。
 - 接口：`backend/app/api/v1/planner.py`（无状态生成）；`trips.py`（旅行容器）；`plans.py`（版本生成/读取/删除/静态图）；schema：`backend/app/schemas/planner.py`、`trip.py`、`plan.py`。
 - 静态图：`backend/app/services/static_map.py`（高德底图 + Pillow 编号）。
 - 数据脚本：`backend/scripts/fetch_city_pois.py`、`seed_city_data.py`，快照在 `backend/app/db/city_pois.json`。
 - 前端：`frontend/src/api.ts`、`frontend/src/App.vue`、`frontend/src/styles.css`；Vite 代理 `/api` → `127.0.0.1:8000`。
-- 持久化：`backend/app/models/trip.py`（`Trip`/`PlanVersion`，旧 `TripDay`/`ItineraryItem` 保留只读）；`app/services/plan_versions.py`（版本号、摘要、快照序列化）。
-- 路线/天气装配：`app/services/planning_services.py`（请求级缓存、最小调用间隔、未配置 Key 时降级）、`app/planners/routing.py`（规划器协议）。
-- 迁移：`backend/scripts/migrate_v03_trips_plans.py`（PostgreSQL 可重复执行）。
+- 持久化：`backend/app/models/trip.py`（`Trip`/`PlanVersion`，含 `selection_json`；旧 `TripDay`/`ItineraryItem` 保留只读）；`app/services/plan_versions.py`（版本号、摘要、快照序列化）。
+- 路线/天气装配：`app/services/planning_services.py`（请求级缓存、最小调用间隔、未配置 Key 时降级）、`app/planners/routing.py`（规划器协议）；公交请求 `strategy=0`，公共交通只取最快备选，地铁仅作同分偏好。
+- 迁移：`backend/scripts/migrate_v03_trips_plans.py`、`migrate_v04_ticket_status.py`、`migrate_v04_plan_selections.py`（PostgreSQL 可重复执行）；旧库先跑迁移，再跑 `seed_city_data.py`。
 - 种子：`backend/scripts/seed_city_data.py`（福州/北京 16+16 POI）；`seed_demo.py` 仅保留为旧演示种子，不再使用。
-- 测试：`backend/tests/`（现有 155 个）。
+- 测试：`backend/tests/`（现有 190 个）。
 - 前端：`frontend/src/App.vue`、`frontend/src/api.ts`（已接 `/trips`、`/plans`、餐食/住宿推荐）。
 - 文档：本文件、`PROJECT_PLAN.md`、`API_CONTRACT_V0.3.md`、`FEASIBILITY_STUDY.md`（课程可研报告，不覆盖当前规划）。
 
@@ -145,7 +155,7 @@
 ```powershell
 cd backend
 python -m pytest -q
-# 期望：155 passed, 1 warning
+# 期望：190 passed, 1 warning
 ```
 
 - 单元测试不访问真实高德接口；新适配器测试用 `httpx.MockTransport`。
@@ -158,21 +168,22 @@ python -m pytest -q
 - `PlanVersion.plan_json` 是快照，字段随生成时 schema 固定；读取旧版本时不要假设一定有最新字段。
 - `City.amap_adcode` 目前只给北京 `110000`、福州 `350100` 填了值；其他城市要先补 adcode，否则天气直接标 unknown。
 - 城市检索仍是精确名称，没有别名/adcode 自动解析。
-- 路线/天气缓存和 0.05 s 最小间隔只在单个规划请求内生效；没有跨请求缓存、全局限流和 Alembic。
+- `mock` 不调用高德；`cache` 使用进程内跨请求 TTL 缓存（重启清空），`live` 绕过缓存；0.05 s 最小间隔在单进程内生效；没有全局限流和 Alembic。
 - 当前迁移脚本只针对 PostgreSQL，且只做加列/建表。
 - 高德 `biz_ext.cost` 不能当门票：2026-10-30 北京 526 个景点覆盖 0/526；重点景点必须官方核验。
 - 天气只覆盖近 4 天；超出必须标未知。
 - 静态地图：后端先取无标注高德底图，再用 Pillow 按 Web Mercator 画编号；多 marker 不能靠重复参数，已用本地绘制解决。
 - 住宿/餐饮是城市级估算，不绑定具体酒店/餐厅，不承诺实时价格/库存。
-- 首版不建模“住宿点→首景点/最后景点→住宿”的接驳，步行只算相邻景点之间。
+- 2026-11-26 真实高德实测：北京颐和园周边酒店 `biz_ext.cost` 和 `lowest_price` 均为空数组。住宿价格改由 RollingGo 按入住日期查询；无房型显示“该日期暂无可订房型”，未匹配显示“未匹配到该酒店报价”，查价失败显示“查价失败”，不会用高德空字段冒充价格。
+- 首版住宿通勤是“直线距离估算 + 八达岭门户固定耗时”，不建模逐段真实路线；住宿点→景点接驳不等同于高德路线耗时。
 - `transport_preference` 是软偏好：主动出行（步行/骑行）、公交、打车/自驾按时间、费用、步行、天气、偏好评分；公交不覆盖时不会强行保留。骑行不单独决定排程，排程用步行耗时作为上限，页面同时给出步行/骑行耗时。打车/骑行费用是估算，不能当真实计价。
-- 八达岭没有地铁直达；市郊铁路 S2 线、京张高铁八达岭长城站属于铁路，不是地铁。高德 `transit/integrated` 当前不返回这两条线（`railway` 为空），只给地铁+877 路公交；要支持需单独维护时刻表/票价/站点接驳。
+- 八达岭没有地铁直达；市郊铁路 S2 线、京张高铁八达岭长城站属于铁路，不是地铁。高德 `transit/integrated` 当前不返回这两条线（`railway` 为空），只给地铁+877 路公交；当前用 `access_gateways.json` 的人工门户方案补足，不是实时铁路时刻表。
 - 877 路名称可能包含“地铁北土城站”，不能按名称含“地铁”判为地铁；已改为按线路 `type` 判断。
 - `HTTP_PROXY/NO_PROXY` 若包含畸形项（如 `[::1]`），httpx 创建 Client 时会直接报 `InvalidURL`，导致规划接口 500。高德/静态图客户端已设 `trust_env=False`；需要代理访问高德时必须显式配置。
 
 ### 待定数据项（不是决策冲突）
 
-- 福州、北京各 5 个重点景点的核验名单、官方票价/开放时间和购票链接仍待完成；当前 Ticket 为空，页面标“票价待核”。
+- 重点景点票价已人工核验，但季节票价（旺季/淡季）尚未按出行日期动态选择；当前按一个代表性价格估算，页面标 `estimated`。儿童票缺失时按成人价保守估算，不声称已核验。
 - 上海是否扩展未定；不阻塞首版。
 - 静态地图的具体视觉样式未定；接口、Key 代理和失败降级已定。
 - `PlanVersion` 的摘要字段最终以什么粒度展示，可在实现时再定；`plan_json` 是确定的。
@@ -198,3 +209,22 @@ python -m pytest -q
 | 2026-11-17 | 住宿推荐接口与独立页面；整趟一家、可扩展多晚，不做订房；测试 148 passed |
 | 2026-11-17 | 住宿类型过滤：排除招待所/青旅/民宿，只保留宾馆酒店；测试 149 passed |
 | 2026-11-17 | AMAP_MODE=mock/cache/live、进程内跨请求缓存、Mock 静态图；测试 155 passed |
+| 2026-11-17 | 午餐 120 分钟、餐饮区域→餐厅两级推荐、实际路线时间闸门；测试 159 passed |
+| 2026-11-17 | 住宿过滤会议中心/子 POI，改日首尾通勤 + 八达岭门户评分；测试 161 passed |
+| 2026-11-17 | 住宿热度前 25 + 评分/预算/纯宾馆过滤；测试 163 passed |
+| 2026-11-17 | 餐厅评分/连锁/本地精选标签与低评分过滤；测试 165 passed |
+| 2026-11-17 | 住宿档次/区域多样性/价格缺失降权 + 酒店品牌搜索；测试 166 passed |
+| 2026-11-17 | 餐饮区域内搜索（菜名/品牌），保持区域边界与质量标签；测试 166 passed |
+| 2026-11-17 | “附近其他”也支持搜索，仍排除区域并过用餐时间闸门；测试 166 passed |
+| 2026-11-17 | 八达岭晚餐回到北京北站/德胜门门户后再推荐市区餐饮；测试 167 passed |
+| 2026-11-17 | 公交请求改为最快捷，公共交通只取最快备选；测试 167 passed |
+| 2026-11-17 | 八达岭把清河/北京北/德胜门门户方案注入路线选择；测试 168 passed |
+| 2026-11-26 | 文档与当前实现对齐：测试数 168、公交只取最快备选、费用已累加、cache 为跨请求缓存 |
+| 2026-11-26 | 创建页补 3 个兴趣 0–100 滑块和旅行节奏滑块；pace 映射每日条目上限与缓冲 |
+| 2026-11-26 | 门票按成人/儿童人数计价，费用三态；福州/北京各 5 个重点景点官方票价/开放时间入库；测试 177 passed |
+| 2026-11-26 | 版本历史 UI（查看/删除）、餐食/住宿选择持久化；测试 180 passed |
+| 2026-11-26 | 网页验收修复：费用说明改为“已按成人/儿童人数计价”，日费用改标“人均门票”；点击左侧“住宿推荐”会先加载推荐，不再停在空状态 |
+| 2026-11-26 | 真实高德餐饮/住宿实测：餐厅人均价可用；酒店房价字段为空，页面显示“价格待核” |
+| 2026-11-27 | 接入 RollingGo Hotel MCP 实时房价；名称精确匹配、同酒店同地址回退、日期校验、30 分钟缓存、超预算标记；测试 190 passed |
+| 2026-11-27 | 区分“无房型/满房”和“价格待核”；酒店无报价时显示真实无房状态，不误导为免费/零价 |
+| 2026-11-27 | 新增“更新花销”：按已选餐厅/酒店重算餐食/住宿，写入 selection_json 并覆盖响应费用 |

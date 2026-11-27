@@ -67,6 +67,8 @@ class CachedAmapProvider:
         self._weather_cache: dict[str, list[WeatherDay]] = {}
         self._restaurant_cache: dict[tuple, list[RestaurantSuggestion]] = {}
         self._stay_cache: dict[tuple, list[StaySuggestion]] = {}
+        self._search_cache: dict[tuple, list[StaySuggestion]] = {}
+        self._restaurant_search_cache: dict[tuple, list[RestaurantSuggestion]] = {}
 
     def close(self) -> None:
         self._client.close()
@@ -145,8 +147,18 @@ class CachedAmapProvider:
         *,
         radius: int = 800,
         limit: int = 5,
+        sortrule: str = "distance",
+        types: str = "050000",
     ) -> list[RestaurantSuggestion]:
-        key = (round(location[0], 6), round(location[1], 6), city, radius, limit)
+        key = (
+            round(location[0], 6),
+            round(location[1], 6),
+            city,
+            radius,
+            limit,
+            sortrule,
+            types,
+        )
         global_key = ("restaurants", *key)
         if self._mode == "cache":
             hit = _cache_get(global_key, _PLACE_TTL_S)
@@ -158,7 +170,12 @@ class CachedAmapProvider:
                 return cached
             self._throttle_locked()
             result = self._client.nearby_restaurants(
-                location, city, radius=radius, limit=limit
+                location,
+                city,
+                radius=radius,
+                limit=limit,
+                sortrule=sortrule,
+                types=types,
             )
             self._restaurant_cache[key] = result
             if self._mode == "cache" and result:
@@ -172,8 +189,16 @@ class CachedAmapProvider:
         *,
         radius: int = 3000,
         limit: int = 8,
+        sortrule: str = "distance",
     ) -> list[StaySuggestion]:
-        key = (round(location[0], 6), round(location[1], 6), city, radius, limit)
+        key = (
+            round(location[0], 6),
+            round(location[1], 6),
+            city,
+            radius,
+            limit,
+            sortrule,
+        )
         global_key = ("hotels", *key)
         if self._mode == "cache":
             hit = _cache_get(global_key, _PLACE_TTL_S)
@@ -185,9 +210,49 @@ class CachedAmapProvider:
                 return cached
             self._throttle_locked()
             result = self._client.nearby_hotels(
-                location, city, radius=radius, limit=limit
+                location, city, radius=radius, limit=limit, sortrule=sortrule
             )
             self._stay_cache[key] = result
+            if self._mode == "cache" and result:
+                _cache_set(global_key, result)
+            return result
+
+    def search_hotels(
+        self, keywords: str, city: str, *, limit: int = 10
+    ) -> list[StaySuggestion]:
+        key = (keywords.strip().lower(), city, limit)
+        global_key = ("hotel-search", *key)
+        if self._mode == "cache":
+            hit = _cache_get(global_key, _PLACE_TTL_S)
+            if hit is not None:
+                return hit
+        with self._lock:
+            cached = self._search_cache.get(key)
+            if cached is not None:
+                return cached
+            self._throttle_locked()
+            result = self._client.search_hotels(keywords, city, limit=limit)
+            self._search_cache[key] = result
+            if self._mode == "cache" and result:
+                _cache_set(global_key, result)
+            return result
+
+    def search_restaurants(
+        self, keywords: str, city: str, *, limit: int = 10
+    ) -> list[RestaurantSuggestion]:
+        key = (keywords.strip().lower(), city, limit)
+        global_key = ("restaurant-search", *key)
+        if self._mode == "cache":
+            hit = _cache_get(global_key, _PLACE_TTL_S)
+            if hit is not None:
+                return hit
+        with self._lock:
+            cached = self._restaurant_search_cache.get(key)
+            if cached is not None:
+                return cached
+            self._throttle_locked()
+            result = self._client.search_restaurants(keywords, city, limit=limit)
+            self._restaurant_search_cache[key] = result
             if self._mode == "cache" and result:
                 _cache_set(global_key, result)
             return result

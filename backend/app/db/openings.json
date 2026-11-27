@@ -1,0 +1,80 @@
+{
+  "source": "Manual official opening verification",
+  "verified_at": "2026-11-26",
+  "cities": {
+    "北京": [
+      {
+        "poi": "故宫博物院",
+        "raw": "旺季4月1日至10月31日 周二至周日 08:30-17:00 16:00停止检票，淡季11月1日至3月31日 周二至周日 08:30-16:30 15:30停止检票，周一全天关闭，节假日营业时间以官方通知为准",
+        "note": "周一闭馆；旺季/淡季闭馆时间不同，排程按解析出的窗口保守处理。",
+        "source": "official_website",
+        "source_url": "https://www.dpm.org.cn/singles_detail/257830.html"
+      },
+      {
+        "poi": "中国国家博物馆",
+        "raw": "周一全天关闭(法定节假日除外)；11月1日至次年5月31日周二至周日09:00-17:00(16:00停止入馆)；6月1日至10月31日周二至周日09:00-17:30(16:30停止入馆)",
+        "note": "周一闭馆；需实名免费预约。",
+        "source": "official_website",
+        "source_url": "https://www.chnmuseum.cn/cg/cgyy/202511/t20251109_277547.shtml"
+      },
+      {
+        "poi": "天坛公园",
+        "raw": "1月至3月,11月至12月 周一至周日 06:30-22:00 最晚进入21:00 园中园08:00-17:00(16:30停止入园)；4月至10月 周一至周日 06:00-22:00 最晚进入21:00 园中园08:00-18:00(17:30停止入园)",
+        "note": "公园大门与园中园时间不同；排程使用公园开放窗口。",
+        "source": "official_website",
+        "source_url": "https://www.tiantanpark.com/"
+      },
+      {
+        "poi": "颐和园",
+        "raw": "1月至3月,11月至12月 周一至周日 06:30-19:00 最晚进入18:00；4月至10月 周一至周日 06:00-20:00 最晚进入19:00",
+        "note": "旺季/淡季闭园时间不同；排程按解析窗口处理。",
+        "source": "official_website",
+        "source_url": "https://www.summerpalace.net.cn/visit.html"
+      },
+      {
+        "poi": "八达岭长城",
+        "raw": "07:30-16:00(停售停检)",
+        "note": "开闭园和停止检票时间可能随季节/客流调整，出行前以官方预约页为准。",
+        "source": "official_public_data",
+        "source_url": "https://www.badaling.cn/"
+      }
+    ],
+    "福州": [
+      {
+        "poi": "三坊七巷",
+        "raw": "周一至周日 08:30-22:00",
+        "note": "街区开放；部分收费景点另有开放时间。",
+        "source": "official_government",
+        "source_url": "http://fgw.fuzhou.gov.cn/zzbz/jgysf/jfgs/202505/t20250519_5020947.htm"
+      },
+      {
+        "poi": "福州国家森林公园",
+        "raw": "周一至周日 06:00-17:30",
+        "note": "园区免费开放；园内单独收费项目另计。",
+        "source": "official_public_data",
+        "source_url": "http://www.fjta.com/jingdian/travels/42"
+      },
+      {
+        "poi": "福州市鼓山旅游景区",
+        "raw": "周一至周日 00:00-24:00",
+        "note": "鼓山风景区全天开放；涌泉寺约 06:30-17:30，需以现场为准。",
+        "source": "official_government",
+        "source_url": "http://fgw.fuzhou.gov.cn/zzbz/tzgg/202504/t20250414_5004383.htm"
+      },
+      {
+        "poi": "西湖公园",
+        "raw": "周一至周日 05:30-22:30 最晚进入22:00",
+        "note": "公园免费开放；具体营业状态以当天开放情况为准。",
+        "source": "official_public_data",
+        "source_url": "http://www.fjta.com/jingdian/travels/53"
+      },
+      {
+        "poi": "福建博物院",
+        "raw": "周二至周五 09:00-18:00开放 最晚进入17:30；周六至周日 09:00-20:00开放 最晚进入19:30周一 不开放；元旦节,春节,清明节,劳动节,端午节,中秋节,国庆节 09:00-20:00开放 最晚进入19:30具体开放时间以官方通知为准",
+        "note": "周一闭馆（法定节假日除外）；免费入场。",
+        "source": "official_website",
+        "source_url": "http://mp.weixin.qq.com/s?__biz=MzAwODc4MTU2Mw==&mid=2712327386&idx=2&sn=57203bd5d8849b4e8747f6bc9f7a109b"
+      }
+    ]
+  }
+}

@@ -21,6 +21,12 @@ def next_version_no(db: Session, trip_id: int) -> int:
 
 
 def version_summary(version: PlanVersion) -> PlanVersionSummary:
+    selection_totals = (version.selection_json or {}).get("totals") or {}
+    total = float(selection_totals.get("total_estimated_cost", version.total_estimated_cost))
+    difference = float(
+        selection_totals.get("budget_difference", version.budget_difference)
+    )
+    over_budget = bool(selection_totals.get("over_budget", version.over_budget))
     return PlanVersionSummary(
         plan_id=version.id,
         version_no=version.version_no,
@@ -30,9 +36,9 @@ def version_summary(version: PlanVersion) -> PlanVersionSummary:
         adults=version.adults_count,
         children=version.children_count,
         budget_total=float(version.budget_total),
-        total_estimated_cost=float(version.total_estimated_cost),
-        budget_difference=float(version.budget_difference),
-        over_budget=version.over_budget,
+        total_estimated_cost=total,
+        budget_difference=difference,
+        over_budget=over_budget,
         weather_known=version.weather_known,
         generated_at=version.generated_at,
     )
@@ -40,6 +46,21 @@ def version_summary(version: PlanVersion) -> PlanVersionSummary:
 
 def version_detail(version: PlanVersion) -> PlanDetail:
     payload = dict(version.plan_json or {})
+    selection = version.selection_json or {}
+    # 用户选餐/选酒店后重新计算的花费覆盖生成时快照，但不修改 plan_json 本身。
+    if selection.get("costs"):
+        payload["costs"] = selection["costs"]
+    totals = selection.get("totals") or {}
+    if totals:
+        payload["total_estimated_cost"] = totals.get(
+            "total_estimated_cost", payload.get("total_estimated_cost")
+        )
+        payload["budget_difference"] = totals.get(
+            "budget_difference", payload.get("budget_difference")
+        )
+        payload["over_budget"] = totals.get(
+            "over_budget", payload.get("over_budget")
+        )
     payload.update(
         plan_id=version.id,
         trip_id=version.trip_id,

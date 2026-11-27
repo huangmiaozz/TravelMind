@@ -1,6 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from datetime import date
+from statistics import median
 
 from app.api.v1.planner import (
     load_planner_context,
@@ -11,16 +14,34 @@ from app.db.session import get_db
 from app.models.trip import PlanVersion, Trip
 from app.planners.trip import plan_trip
 from app.schemas.plan import (
+    MealAreaList,
+    MealAreaSuggestion,
     MealSuggestion,
     MealSuggestionList,
     PlanCreateRequest,
     PlanDetail,
+    PlanSelections,
     PlanVersionList,
     PlanVersionSummary,
     StaySuggestion,
     StaySuggestionList,
 )
 from app.services.costs import build_costs
+from app.services.dining_areas import get_area
+from app.services.hotel_recommendations import (
+    passes_quality,
+    pick_diverse,
+    score_hotel,
+)
+from app.services.meal_recommendations import (
+    area_candidates,
+    area_restaurants,
+    meal_anchor,
+    meal_budget,
+    nearby_restaurants,
+    search_area_restaurants,
+    search_nearby_restaurants,
+)
 from app.services.plan_versions import (
     data_snapshot,
     next_version_no,
@@ -33,7 +54,9 @@ from app.services.planning_services import (
     get_planning_provider,
     weather_for_dates,
 )
-from app.services.coordinates import gcj02_to_wgs84, meters_between, wgs84_to_gcj02
+from app.services.coordinates import wgs84_to_gcj02
+from app.services.rollinggo import RollingGoHotelClient
+from app.services.selection_costs import recalculate_selection_costs
 from app.services.static_map import StaticMapError, fetch_static_map
 
 
@@ -41,6 +64,60 @@ router = APIRouter(tags=["plans"])
 
 # 方案生成后 plan_json 不再变化，按 (plan_id, day_index) 缓存静态图即可。
 _MAP_CACHE: dict[tuple[int, int], bytes] = {}
+_rollinggo = RollingGoHotelClient()
+
+
+def _enrich_stay_prices(
+    items: list[StaySuggestion], version: PlanVersion
+) -> list[StaySuggestion]:
+    """用 RollingGo 补酒店实时价；失败/名称不匹配时保留 unknown。"""
+    if not items or not _rollinggo.configured:
+        return items
+    check_in = version.start_date
+    if check_in < date.today():
+        # RollingGo 对过去日期可能回退到未来默认日期，不能拿它冒充本方案房价。
+        return items
+    request = version.request_json or {}
+    nights = max(1, int(request.get("nights") or (version.days_count - 1) or 1))
+    adults = max(1, int(request.get("adults") or 1))
+    children = max(0, int(request.get("children") or 0))
+    rooms = max(1, int(request.get("rooms") or 1))
+    hotel_budget = request.get("hotel_budget_per_room_night")
+    budget = float(hotel_budget) if hotel_budget is not None else None
+    enriched: list[StaySuggestion] = []
+    for item in items:
+        try:
+            price = _rollinggo.price_for_hotel(
+                item.name,
+                address=item.address,
+                check_in=check_in,
+                nights=nights,
+                adults=adults,
+                children=children,
+                rooms=rooms,
+            )
+        except Exception:
+            price = None
+        if price is None:
+            enriched.append(item)
+            continue
+        enriched.append(
+            item.model_copy(
+                update={
+                    "cost_amount": price.amount,
+                    "over_budget": (
+                        price.amount is not None
+                        and budget is not None
+                        and price.amount > budget
+                    ),
+                    "price_status": price.status,
+                    "price_source": price.source,
+                    "price_checked_at": price.checked_at,
+                    "price_note": price.note,
+                }
+            )
+        )
+    return enriched
 
 
 def _get_trip(db: Session, trip_id: int, *, lock: bool = False) -> Trip:
@@ -188,6 +265,352 @@ def delete_plan_version(
     db.commit()
 
 
+@router.post(
+    "/plans/{plan_id}/costs/recalculate",
+    response_model=PlanDetail,
+)
+def recalculate_costs(plan_id: int, db: Session = Depends(get_db)) -> PlanDetail:
+    """按已选餐厅/酒店重算费用，并把结果挂到当前版本的 selection_json。"""
+    version = db.get(PlanVersion, plan_id)
+    if version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Plan version not found"
+        )
+    costs = recalculate_selection_costs(version)
+    selection = dict(version.selection_json or {})
+    selection["costs"] = costs.model_dump(mode="json")
+    selection["totals"] = {
+        "total_estimated_cost": costs.total_estimated,
+        "budget_difference": costs.budget_difference,
+        "over_budget": (
+            costs.budget_total > 0 and costs.total_estimated > costs.budget_total
+        ),
+    }
+    version.selection_json = selection
+    db.commit()
+    db.refresh(version)
+    return version_detail(version)
+
+
+@router.get(
+    "/plans/{plan_id}/selections",
+    response_model=PlanSelections,
+)
+def get_plan_selections(
+    plan_id: int, db: Session = Depends(get_db)
+) -> PlanSelections:
+    version = db.get(PlanVersion, plan_id)
+    if version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Plan version not found"
+        )
+    return PlanSelections(**(version.selection_json or {}))
+
+
+@router.put(
+    "/plans/{plan_id}/selections",
+    response_model=PlanSelections,
+)
+def save_plan_selections(
+    plan_id: int,
+    payload: PlanSelections,
+    db: Session = Depends(get_db),
+) -> PlanSelections:
+    version = db.get(PlanVersion, plan_id)
+    if version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Plan version not found"
+        )
+    version.selection_json = payload.model_dump(mode="json")
+    db.commit()
+    db.refresh(version)
+    return payload
+
+
+@router.get(
+    "/plans/{plan_id}/days/{day_index}/meals/{meal_type}/areas",
+    response_model=MealAreaList,
+)
+def meal_areas(
+    plan_id: int,
+    day_index: int,
+    meal_type: str,
+    db: Session = Depends(get_db),
+    provider: CachedAmapProvider | None = Depends(get_planning_provider),
+) -> MealAreaList:
+    version = db.get(PlanVersion, plan_id)
+    if version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Plan version not found"
+        )
+    days = (version.plan_json or {}).get("days") or []
+    if day_index < 1 or day_index > len(days):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Day not found"
+        )
+    if provider is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Amap provider is not configured",
+        )
+    try:
+        anchor, next_item = meal_anchor(days[day_index - 1], meal_type)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+
+    candidates, total, travel_budget, min_eat = area_candidates(
+        provider,
+        version.plan_json.get("city", ""),
+        anchor,
+        next_item,
+        meal_type,
+    )
+    return MealAreaList(
+        items=[
+            MealAreaSuggestion(
+                id=item.area.id,
+                name=item.area.name,
+                popularity=item.area.popularity,
+                travel_minutes=item.travel_minutes,
+                note="含区域步行 5 分钟",
+                area_type=item.area.area_type,
+                weather_friendly=item.area.weather_friendly,
+            )
+            for item in candidates
+        ],
+        meal_budget_minutes=total,
+        travel_budget_minutes=travel_budget,
+        min_eat_minutes=min_eat,
+        total=len(candidates),
+    )
+
+
+@router.get(
+    "/plans/{plan_id}/days/{day_index}/meals/{meal_type}/areas/{area_id}/restaurants",
+    response_model=MealSuggestionList,
+)
+def meal_area_restaurants(
+    plan_id: int,
+    day_index: int,
+    meal_type: str,
+    area_id: str,
+    db: Session = Depends(get_db),
+    provider: CachedAmapProvider | None = Depends(get_planning_provider),
+) -> MealSuggestionList:
+    version = db.get(PlanVersion, plan_id)
+    if version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Plan version not found"
+        )
+    days = (version.plan_json or {}).get("days") or []
+    if day_index < 1 or day_index > len(days):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Day not found"
+        )
+    if provider is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Amap provider is not configured",
+        )
+    area = get_area(version.plan_json.get("city", ""), area_id)
+    if area is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Dining area not found"
+        )
+    restaurants = area_restaurants(
+        provider, area, version.plan_json.get("city", "")
+    )
+    return MealSuggestionList(
+        items=[
+            MealSuggestion(
+                name=item.name,
+                address=item.address,
+                distance_m=item.distance_m,
+                cost_amount=item.cost_amount,
+                rating=item.rating,
+                area_id=area.id,
+                area_name=area.name,
+                quality_tag=item.quality_tag,
+            )
+            for item in restaurants
+        ],
+        total=len(restaurants),
+    )
+
+
+@router.get(
+    "/plans/{plan_id}/days/{day_index}/meals/{meal_type}/areas/{area_id}/restaurants/search",
+    response_model=MealSuggestionList,
+)
+def search_meal_area_restaurants(
+    plan_id: int,
+    day_index: int,
+    meal_type: str,
+    area_id: str,
+    q: str = Query(min_length=1, max_length=50),
+    db: Session = Depends(get_db),
+    provider: CachedAmapProvider | None = Depends(get_planning_provider),
+) -> MealSuggestionList:
+    version = db.get(PlanVersion, plan_id)
+    if version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Plan version not found"
+        )
+    days = (version.plan_json or {}).get("days") or []
+    if day_index < 1 or day_index > len(days):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Day not found"
+        )
+    if provider is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Amap provider is not configured",
+        )
+    area = get_area(version.plan_json.get("city", ""), area_id)
+    if area is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Dining area not found"
+        )
+    restaurants = search_area_restaurants(
+        provider,
+        area,
+        version.plan_json.get("city", ""),
+        q,
+    )
+    return MealSuggestionList(
+        items=[
+            MealSuggestion(
+                name=item.name,
+                address=item.address,
+                distance_m=item.distance_m,
+                cost_amount=item.cost_amount,
+                rating=item.rating,
+                area_id=area.id,
+                area_name=area.name,
+                quality_tag=item.quality_tag,
+            )
+            for item in restaurants
+        ],
+        total=len(restaurants),
+    )
+
+
+@router.get(
+    "/plans/{plan_id}/days/{day_index}/meals/{meal_type}/nearby",
+    response_model=MealSuggestionList,
+)
+def meal_nearby(
+    plan_id: int,
+    day_index: int,
+    meal_type: str,
+    db: Session = Depends(get_db),
+    provider: CachedAmapProvider | None = Depends(get_planning_provider),
+) -> MealSuggestionList:
+    version = db.get(PlanVersion, plan_id)
+    if version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Plan version not found"
+        )
+    days = (version.plan_json or {}).get("days") or []
+    if day_index < 1 or day_index > len(days):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Day not found"
+        )
+    if provider is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Amap provider is not configured",
+        )
+    try:
+        anchor, _ = meal_anchor(days[day_index - 1], meal_type)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+
+    restaurants = nearby_restaurants(
+        provider,
+        version.plan_json.get("city", ""),
+        anchor,
+        meal_type,
+    )
+    return MealSuggestionList(
+        items=[
+            MealSuggestion(
+                name=item.name,
+                address=item.address,
+                distance_m=item.distance_m,
+                cost_amount=item.cost_amount,
+                rating=item.rating,
+                travel_minutes=travel,
+                quality_tag=item.quality_tag,
+            )
+            for item, travel in restaurants
+        ],
+        total=len(restaurants),
+    )
+
+
+@router.get(
+    "/plans/{plan_id}/days/{day_index}/meals/{meal_type}/nearby/search",
+    response_model=MealSuggestionList,
+)
+def search_meal_nearby(
+    plan_id: int,
+    day_index: int,
+    meal_type: str,
+    q: str = Query(min_length=1, max_length=50),
+    db: Session = Depends(get_db),
+    provider: CachedAmapProvider | None = Depends(get_planning_provider),
+) -> MealSuggestionList:
+    version = db.get(PlanVersion, plan_id)
+    if version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Plan version not found"
+        )
+    days = (version.plan_json or {}).get("days") or []
+    if day_index < 1 or day_index > len(days):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Day not found"
+        )
+    if provider is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Amap provider is not configured",
+        )
+    try:
+        anchor, _ = meal_anchor(days[day_index - 1], meal_type)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+
+    restaurants = search_nearby_restaurants(
+        provider,
+        version.plan_json.get("city", ""),
+        anchor,
+        meal_type,
+        q,
+    )
+    return MealSuggestionList(
+        items=[
+            MealSuggestion(
+                name=item.name,
+                address=item.address,
+                distance_m=item.distance_m,
+                cost_amount=item.cost_amount,
+                rating=item.rating,
+                travel_minutes=travel,
+                quality_tag=item.quality_tag,
+            )
+            for item, travel in restaurants
+        ],
+        total=len(restaurants),
+    )
+
+
 @router.get(
     "/plans/{plan_id}/days/{day_index}/meals/{meal_type}/suggestions",
     response_model=MealSuggestionList,
@@ -274,53 +697,146 @@ def stay_suggestions(
             detail="Amap provider is not configured",
         )
 
-    coords = [
-        (float(item["longitude"]), float(item["latitude"]))
-        for day in version.plan_json.get("days") or []
-        for item in day.get("items") or []
-        if item.get("longitude") is not None and item.get("latitude") is not None
-    ]
+    day_items: list[list[tuple[float, float, str]]] = []
+    for day in version.plan_json.get("days") or []:
+        items: list[tuple[float, float, str]] = []
+        for item in day.get("items") or []:
+            if item.get("longitude") is None or item.get("latitude") is None:
+                continue
+            items.append(
+                (
+                    float(item["longitude"]),
+                    float(item["latitude"]),
+                    str(item.get("name") or ""),
+                )
+            )
+        if items:
+            day_items.append(items)
+    coords = [(lon, lat) for items in day_items for lon, lat, _ in items]
     if not coords:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No attraction coordinates for stay suggestions",
         )
 
-    center_lon = sum(point[0] for point in coords) / len(coords)
-    center_lat = sum(point[1] for point in coords) / len(coords)
+    # 中位数比平均值更稳：八达岭这种远端景点不会把搜索中心拖到郊区。
+    center_lon = median(point[0] for point in coords)
+    center_lat = median(point[1] for point in coords)
     hotels = provider.nearby_hotels(
         wgs84_to_gcj02(center_lon, center_lat),
         version.plan_json.get("city", ""),
-        limit=8,
+        radius=5000,
+        limit=25,
+        sortrule="weight",
     )
 
-    ranked: list[tuple[float, StaySuggestion]] = []
-    for hotel in hotels:
-        if hotel.location is None:
-            continue
-        hotel_lon, hotel_lat = gcj02_to_wgs84(*hotel.location)
-        avg_distance = sum(
-            meters_between(hotel_lon, hotel_lat, lon, lat)
-            for lon, lat in coords
-        ) / len(coords)
-        ranked.append(
-            (
-                avg_distance,
-                StaySuggestion(
-                    name=hotel.name,
-                    address=hotel.address,
-                    business_area=hotel.business_area,
-                    stay_type=hotel.stay_type,
-                    distance_m=hotel.distance_m,
-                    avg_attraction_distance_m=round(avg_distance),
-                    cost_amount=hotel.cost_amount,
-                    rating=hotel.rating,
-                ),
+    scored = [
+        value
+        for hotel in hotels
+        if (value := score_hotel(hotel, day_items)) is not None
+    ]
+    hotel_budget = (version.request_json or {}).get(
+        "hotel_budget_per_room_night"
+    )
+    filtered = [
+        value
+        for value in scored
+        if passes_quality(value.hotel, hotel_budget)
+    ]
+    # 字段缺失时不把整页清空：先尝试质量过滤，没有结果再回退。
+    preferred_tier = [value for value in filtered if value.tier != "经济型"]
+    ranked = preferred_tier if len(preferred_tier) >= 3 else filtered
+    if not ranked:
+        ranked = scored
+    ranked.sort(key=lambda item: item.score)
+    ranked = pick_diverse(ranked[:20], limit=5, per_area=2)
+    items = [
+        StaySuggestion(
+            name=scored.hotel.name,
+            address=scored.hotel.address,
+            business_area=scored.hotel.business_area,
+            stay_type=scored.hotel.stay_type,
+            distance_m=scored.hotel.distance_m,
+            avg_commute_minutes=scored.avg_commute_minutes,
+            max_commute_minutes=scored.max_commute_minutes,
+            day_commutes=list(scored.day_commutes),
+            tier=scored.tier,
+            cost_amount=scored.hotel.cost_amount,
+            rating=scored.hotel.rating,
+        )
+        for scored in ranked[:5]
+    ]
+    items = _enrich_stay_prices(items, version)
+    return StaySuggestionList(items=items, total=len(items))
+
+
+@router.get(
+    "/plans/{plan_id}/stays/search",
+    response_model=StaySuggestionList,
+)
+def search_stays(
+    plan_id: int,
+    q: str = Query(min_length=1, max_length=50),
+    db: Session = Depends(get_db),
+    provider: CachedAmapProvider | None = Depends(get_planning_provider),
+) -> StaySuggestionList:
+    version = db.get(PlanVersion, plan_id)
+    if version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Plan version not found"
+        )
+    if provider is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Amap provider is not configured",
+        )
+    day_items: list[list[tuple[float, float, str]]] = []
+    for day in version.plan_json.get("days") or []:
+        items: list[tuple[float, float, str]] = []
+        for item in day.get("items") or []:
+            if item.get("longitude") is None or item.get("latitude") is None:
+                continue
+            items.append(
+                (
+                    float(item["longitude"]),
+                    float(item["latitude"]),
+                    str(item.get("name") or ""),
+                )
             )
+        if items:
+            day_items.append(items)
+    if not day_items:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No attraction coordinates for stay search",
         )
 
-    ranked.sort(key=lambda pair: pair[0])
-    items = [hotel for _, hotel in ranked[:5]]
+    hotels = provider.search_hotels(
+        q, version.plan_json.get("city", ""), limit=10
+    )
+    scored = [
+        value
+        for hotel in hotels
+        if (value := score_hotel(hotel, day_items)) is not None
+    ]
+    scored.sort(key=lambda item: item.score)
+    items = [
+        StaySuggestion(
+            name=value.hotel.name,
+            address=value.hotel.address,
+            business_area=value.hotel.business_area,
+            stay_type=value.hotel.stay_type,
+            distance_m=value.hotel.distance_m,
+            avg_commute_minutes=value.avg_commute_minutes,
+            max_commute_minutes=value.max_commute_minutes,
+            day_commutes=list(value.day_commutes),
+            tier=value.tier,
+            cost_amount=value.hotel.cost_amount,
+            rating=value.hotel.rating,
+        )
+        for value in scored[:8]
+    ]
+    items = _enrich_stay_prices(items, version)
     return StaySuggestionList(items=items, total=len(items))
 
 

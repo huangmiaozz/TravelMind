@@ -171,17 +171,137 @@ def test_create_plan_version_persists_request_and_result(
     assert body["days_count"] == 2
     assert len(body["days"]) == 2
     assert body["status"] == "ok"
-    assert body["total_estimated_cost"] == 1760
-    assert body["budget_difference"] == -1260
+    assert body["total_estimated_cost"] == 2040
+    assert body["budget_difference"] == -1540
     assert body["over_budget"] is True
-    assert body["costs"]["tickets_amount"] == 140
+    assert body["costs"]["tickets_amount"] == 420
+    assert body["costs"]["tickets_status"] == "estimated"
+    assert body["costs"]["tickets_estimated_amount"] == 420
+    assert body["costs"]["tickets_unknown_count"] == 0
     assert body["costs"]["meals_amount"] == 720
     assert body["costs"]["lodging_amount"] == 900
     assert body["costs"]["budget_total"] == 500
     assert body["request_snapshot"]["rooms"] == 2
     assert body["request_snapshot"]["nights"] == 1
+    assert any("2 名成人 + 1 名儿童" in note for note in body["notes"])
+    assert not any("尚未按同行人数" in note for note in body["notes"])
+    assert not any("总费用不含门票" in note for note in body["notes"])
     assert body["data_snapshot"]["poi_data_version"] is None
     assert body["data_snapshot"]["weather_source"] is None
+
+
+def test_plan_selections_are_persisted_per_version(client, monkeypatch) -> None:
+    trip = _create_trip(client, monkeypatch)
+    monkeypatch.setattr(
+        "app.api.v1.planner.candidates_for_city",
+        lambda db, city: [_candidate(1, "景点一", 60)],
+    )
+    plan = client.post(
+        f"/api/v1/trips/{trip['id']}/plans", json=_plan_payload(days=1)
+    ).json()
+
+    empty = client.get(f"/api/v1/plans/{plan['plan_id']}/selections")
+    assert empty.status_code == 200
+    assert empty.json() == {"meals": [], "stay": None}
+
+    payload = {
+        "meals": [
+            {
+                "day_index": 1,
+                "meal_type": "lunch",
+                "name": "示例餐厅",
+                "address": "示例路 1 号",
+                "area_id": "qianmen",
+                "travel_minutes": 12,
+                "cost_amount": 50,
+            }
+        ],
+        "stay": {
+            "name": "示例酒店",
+            "address": "示例路 2 号",
+            "business_area": "前门",
+            "tier": "舒适型",
+            "cost_amount": 420,
+            "price_status": "quoted",
+            "price_source": "rollinggo",
+            "price_checked_at": "2026-11-27T01:00:00+00:00",
+            "price_note": "示例报价",
+            "rating": 4.6,
+        },
+    }
+    saved = client.put(
+        f"/api/v1/plans/{plan['plan_id']}/selections", json=payload
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json() == payload
+
+    loaded = client.get(f"/api/v1/plans/{plan['plan_id']}/selections")
+    assert loaded.json() == payload
+
+
+def test_recalculate_costs_uses_selected_meal_and_stay(client, monkeypatch) -> None:
+    trip = _create_trip(client, monkeypatch)
+    monkeypatch.setattr(
+        "app.api.v1.planner.candidates_for_city",
+        lambda db, city: [
+            _candidate(1, "景点一", 60),
+            _candidate(2, "景点二", 80),
+        ],
+    )
+    plan = client.post(
+        f"/api/v1/trips/{trip['id']}/plans", json=_plan_payload()
+    ).json()
+    selections = {
+        "meals": [
+            {
+                "day_index": 1,
+                "meal_type": "lunch",
+                "name": "示例餐厅",
+                "address": "示例路",
+                "area_id": "qianmen",
+                "travel_minutes": 10,
+                "cost_amount": 50,
+            }
+        ],
+        "stay": {
+            "name": "示例酒店",
+            "address": "示例路 2 号",
+            "business_area": "前门",
+            "tier": "舒适型",
+            "cost_amount": 300,
+            "price_status": "quoted",
+            "price_source": "rollinggo",
+            "price_checked_at": "2026-11-27T01:00:00+00:00",
+            "price_note": "示例报价",
+            "rating": 4.5,
+        },
+    }
+    assert (
+        client.put(
+            f"/api/v1/plans/{plan['plan_id']}/selections", json=selections
+        ).status_code
+        == 200
+    )
+
+    refreshed = client.post(
+        f"/api/v1/plans/{plan['plan_id']}/costs/recalculate"
+    )
+    assert refreshed.status_code == 200, refreshed.text
+    body = refreshed.json()
+
+    # 已选午餐 50×3 人；其余餐次按日均 120 元拆分；住宿 300×2 间×1 晚。
+    assert body["costs"]["meals_amount"] == 672
+    assert body["costs"]["lodging_amount"] == 600
+    assert body["costs"]["lodging_status"] == "quoted"
+    assert body["costs"]["updated_at"]
+    assert body["costs"]["total_estimated"] == 1692
+    assert body["total_estimated_cost"] == 1692
+    assert body["budget_difference"] == -1192
+
+    again = client.get(f"/api/v1/plans/{plan['plan_id']}").json()
+    assert again["costs"]["meals_amount"] == 672
+    summary = client.get(f"/api/v1/trips/{trip['id']}/plans").json()["items"][-1]
+    assert summary["total_estimated_cost"] == 1692
 
 
 def test_replanning_adds_a_version_without_overwriting_the_old_one(
@@ -207,14 +327,14 @@ def test_replanning_adds_a_version_without_overwriting_the_old_one(
     assert first["plan_id"] != second["plan_id"]
     assert first["version_no"] == 1
     assert second["version_no"] == 2
-    assert second["total_estimated_cost"] == 420
+    assert second["total_estimated_cost"] == 540
     assert second["over_budget"] is True
-    assert second["budget_difference"] == -370
+    assert second["budget_difference"] == -490
 
     old = client.get(f"/api/v1/plans/{first['plan_id']}")
     assert old.status_code == 200
     assert old.json()["days_count"] == 2
-    assert old.json()["total_estimated_cost"] == 1760
+    assert old.json()["total_estimated_cost"] == 2040
 
     versions = client.get(f"/api/v1/trips/{trip['id']}/plans")
     assert versions.status_code == 200

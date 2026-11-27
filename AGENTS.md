@@ -23,7 +23,7 @@ AI 规划/对话修改、跨城交通、订票/支付/库存、地图导航/JS �
 ## 工作方式
 
 - 先 `git status`，保留与当前任务无关的未提交改动，不要回滚。
-- 改完运行：`cd backend && python -m pytest -q`（当前期望 113 passed）。
+- 改完运行：`cd backend && python -m pytest -q`（当前期望 190 passed, 1 warning）。
 - 外部接口测试用固定 fixture，不在单元测试里打真实高德接口。
 - 不把 `AMAP_API_KEY` 写进前端、日志、测试或文档。
 - 任何范围变化，先更新 `PROJECT_PLAN.md` 和 `HANDOFF.md` 的决策表/变更记录，再改代码。
@@ -31,4 +31,4 @@ AI 规划/对话修改、跨城交通、订票/支付/库存、地图导航/JS �
 
 ## 下一步
 
-按 `docs/HANDOFF.md` §6：`PlanVersion + plan_json` 持久化 → 接入 AmapClient → 福州/北京数据 → 静态地图 → 前端闭环 → Phase 2 出行清单。
+按 `docs/HANDOFF.md` §6：PlanCost/PlanDay 规范化拆表 → 全局限流/Alembic 或账号体系 → 回归/试用；Phase 2 出行清单有余力再做。

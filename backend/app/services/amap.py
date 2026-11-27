@@ -39,6 +39,9 @@ class RestaurantSuggestion:
     cost_amount: float | None
     rating: float | None
     location: tuple[float, float] | None
+    poi_type: str | None = None
+    typecode: str | None = None
+    quality_tag: str | None = None
 
 
 @dataclass(frozen=True)
@@ -139,6 +142,37 @@ def _is_campus_place(name: str, address: str | None, type_text: str) -> bool:
     )
 
 
+def _is_meal_restaurant(name: str, type_text: str, typecode: str) -> bool:
+    """只保留正餐；排除下午茶、咖啡、茶社、甜品、酒店子设施等。"""
+    text = f"{name} {type_text}"
+    if any(
+        word in text
+        for word in (
+            "下午茶",
+            "咖啡",
+            "茶社",
+            "茶艺",
+            "茶馆",
+            "甜品",
+            "蛋糕",
+            "冷饮",
+            "酒吧",
+            "大堂吧",
+            "宴会厅",
+            "会议室",
+            "停车场",
+            "礼宾部",
+            "前台",
+        )
+    ):
+        return False
+    if typecode.startswith(("0501", "0502", "0503", "0504")):
+        return True
+    return any(
+        word in text for word in ("餐厅", "饭店", "酒楼", "小吃", "快餐", "美食")
+    )
+
+
 def _is_hotel(
     name: str, address: str | None, type_text: str, typecode: str
 ) -> bool:
@@ -148,7 +182,25 @@ def _is_hotel(
     text = f"{name} {type_text}"
     if any(
         word in text
-        for word in ("招待所", "青年旅舍", "旅馆", "民宿", "客栈", "公寓")
+        for word in (
+            "招待所",
+            "青年旅舍",
+            "旅馆",
+            "民宿",
+            "客栈",
+            "公寓",
+            "会议中心",
+            "会展中心",
+            "写字楼",
+            "小区",
+            "机关",
+            "医院",
+            "大堂",
+            "礼宾部",
+            "宴会厅",
+            "停车场",
+            "前台",
+        )
     ):
         return False
     if "住宿" not in type_text and not typecode.startswith("100"):
@@ -260,6 +312,8 @@ class AmapClient:
                 return self._failed(mode, "transit requires city and cityd")
             params["city"] = city
             params["cityd"] = cityd
+            # 0 = 最快捷；仍会返回多个备选，由选择器结合费用/步行做二次判断。
+            params["strategy"] = "0"
 
         payload, error = self._get(path, params)
         if error is not None or payload is None:
@@ -457,23 +511,21 @@ class AmapClient:
 
     # ---- 用餐推荐 ----
 
-    def nearby_restaurants(
+    def search_restaurants(
         self,
-        location: tuple[float, float],
+        keywords: str,
         city: str,
         *,
-        radius: int = 800,
-        limit: int = 5,
+        limit: int = 10,
     ) -> list[RestaurantSuggestion]:
-        """按 GCJ-02 坐标查附近餐厅；失败返回空列表，由上层降级。"""
+        """按关键字搜索餐厅；用户主动搜索时使用。"""
         payload, error = self._get(
-            "/v3/place/around",
+            "/v3/place/text",
             {
-                "location": f"{location[0]:.6f},{location[1]:.6f}",
-                "radius": str(radius),
-                "types": "050000",
+                "keywords": keywords,
                 "city": city,
-                "offset": "10",
+                "types": "050000",
+                "offset": str(limit),
                 "page": "1",
                 "extensions": "all",
             },
@@ -488,13 +540,123 @@ class AmapClient:
             name = str(poi.get("name") or "未命名餐厅")
             address = str(poi.get("address")) if poi.get("address") else None
             type_text = str(poi.get("type") or "")
+            typecode = str(poi.get("typecode") or "")
             if "食堂" in name or _is_campus_place(name, address, type_text):
+                continue
+            if not _is_meal_restaurant(name, type_text, typecode):
                 continue
             biz = poi.get("biz_ext") or {}
             result.append(
                 RestaurantSuggestion(
                     name=name,
                     address=address,
+                    distance_m=_to_int(poi.get("distance")),
+                    cost_amount=_to_float(biz.get("cost")),
+                    rating=_to_float(biz.get("rating")),
+                    location=_to_point(poi.get("location")),
+                    poi_type=type_text or None,
+                    typecode=typecode or None,
+                )
+            )
+            if len(result) >= limit:
+                break
+        return result
+
+    def nearby_restaurants(
+        self,
+        location: tuple[float, float],
+        city: str,
+        *,
+        radius: int = 800,
+        limit: int = 5,
+        sortrule: str = "distance",
+        types: str = "050000",
+    ) -> list[RestaurantSuggestion]:
+        """按 GCJ-02 坐标查附近正餐餐厅；咖啡/茶/甜品等会被过滤。"""
+        payload, error = self._get(
+            "/v3/place/around",
+            {
+                "location": f"{location[0]:.6f},{location[1]:.6f}",
+                "radius": str(radius),
+                "types": types,
+                "city": city,
+                "offset": "20",
+                "page": "1",
+                "sortrule": sortrule,
+                "extensions": "all",
+            },
+        )
+        if error is not None or payload is None:
+            return []
+        if str(payload.get("status")) != "1":
+            return []
+
+        result: list[RestaurantSuggestion] = []
+        for poi in payload.get("pois") or []:
+            name = str(poi.get("name") or "未命名餐厅")
+            address = str(poi.get("address")) if poi.get("address") else None
+            type_text = str(poi.get("type") or "")
+            typecode = str(poi.get("typecode") or "")
+            if "食堂" in name or _is_campus_place(name, address, type_text):
+                continue
+            if not _is_meal_restaurant(name, type_text, typecode):
+                continue
+            biz = poi.get("biz_ext") or {}
+            result.append(
+                RestaurantSuggestion(
+                    name=name,
+                    address=address,
+                    distance_m=_to_int(poi.get("distance")),
+                    cost_amount=_to_float(biz.get("cost")),
+                    rating=_to_float(biz.get("rating")),
+                    location=_to_point(poi.get("location")),
+                    poi_type=type_text or None,
+                    typecode=typecode or None,
+                )
+            )
+            if len(result) >= limit:
+                break
+        return result
+
+    def search_hotels(
+        self,
+        keywords: str,
+        city: str,
+        *,
+        limit: int = 10,
+    ) -> list[StaySuggestion]:
+        """按酒店/品牌关键字搜索；只用于用户主动搜索。"""
+        payload, error = self._get(
+            "/v3/place/text",
+            {
+                "keywords": keywords,
+                "city": city,
+                "types": "100000",
+                "offset": str(limit),
+                "page": "1",
+                "extensions": "all",
+            },
+        )
+        if error is not None or payload is None:
+            return []
+        if str(payload.get("status")) != "1":
+            return []
+
+        result: list[StaySuggestion] = []
+        for poi in payload.get("pois") or []:
+            name = str(poi.get("name") or "")
+            address = str(poi.get("address")) if poi.get("address") else None
+            type_text = str(poi.get("type") or "")
+            typecode = str(poi.get("typecode") or "")
+            if not name or not _is_hotel(name, address, type_text, typecode):
+                continue
+            biz = poi.get("biz_ext") or {}
+            result.append(
+                StaySuggestion(
+                    name=name,
+                    address=address,
+                    business_area=str(poi.get("business_area")) if poi.get("business_area") else None,
+                    stay_type=type_text or None,
                     distance_m=_to_int(poi.get("distance")),
                     cost_amount=_to_float(biz.get("cost")),
                     rating=_to_float(biz.get("rating")),
@@ -512,9 +674,11 @@ class AmapClient:
         *,
         radius: int = 3000,
         limit: int = 8,
+        sortrule: str = "distance",
     ) -> list[StaySuggestion]:
         """按 GCJ-02 坐标查附近酒店。
 
+        `sortrule=weight` 用高德综合排序做“热度初筛”，再由上层按通勤重排。
         `100000` 是“住宿服务”大类，包含招待所、青年旅舍等；这里只保留
         宾馆/酒店/饭店，过滤明显不是酒店的住宿类型。
         """
@@ -525,8 +689,9 @@ class AmapClient:
                 "radius": str(radius),
                 "types": "100000",
                 "city": city,
-                "offset": "20",
+                "offset": "25",
                 "page": "1",
+                "sortrule": sortrule,
                 "extensions": "all",
             },
         )

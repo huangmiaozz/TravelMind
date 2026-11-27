@@ -169,7 +169,37 @@ def test_explicit_walk_still_uses_transit_when_walking_fails() -> None:
     assert any(option.mode == "transit" for option in options)
 
 
-def test_selector_compares_all_transit_alternatives() -> None:
+def test_selector_adds_manual_badaling_rail_option() -> None:
+    provider = FakeProvider(
+        {
+            "walk": leg("walk", distance_m=4200, duration_s=3000),
+            "transit": leg("transit", distance_m=3800, duration_s=1800, walking_m=200, cost=2),
+        }
+    )
+
+    options = build_transport_options(
+        provider,
+        A,
+        B,
+        preference="auto",
+        weather=weather("low"),
+        city="北京",
+        daily_budget=1000,
+        max_walk_m=5000,
+        origin_name="故宫",
+        destination_name="八达岭长城",
+    )
+
+    rail_options = [
+        option
+        for option in options
+        if any(segment.mode == "train" for segment in option.segments)
+    ]
+    assert rail_options
+    assert any(segment.line_name == "京张高铁" for segment in rail_options[0].segments)
+
+
+def test_selector_uses_fastest_transit_alternative() -> None:
     slow = TransitAlternative(
         distance_m=5000,
         duration_s=1800,
@@ -213,8 +243,9 @@ def test_selector_compares_all_transit_alternatives() -> None:
     )
     transit_options = [option for option in options if option.mode == "transit"]
 
-    assert len(transit_options) == 2
-    assert options[0].segments[0].line_name == "地铁1号线"
+    assert len(transit_options) == 1
+    assert transit_options[0].duration_s == 600
+    assert transit_options[0].segments[0].line_name == "地铁1号线"
 
 
 def test_active_option_uses_walk_time_and_reports_bike_time() -> None:

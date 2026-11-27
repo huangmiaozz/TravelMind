@@ -30,7 +30,8 @@ def test_mock_provider_returns_places() -> None:
     assert all(hotel.stay_type for hotel in hotels)
 
 
-def test_default_provider_is_mock() -> None:
+def test_default_provider_is_mock(monkeypatch) -> None:
+    monkeypatch.setattr("app.core.config.settings.amap_mode", "mock")
     provider = next(get_planning_provider())
     try:
         assert isinstance(provider, MockAmapProvider)

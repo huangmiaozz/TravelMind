@@ -89,10 +89,32 @@ class MealSuggestion(BaseModel):
     distance_m: int | None = None
     cost_amount: float | None = None
     rating: float | None = None
+    travel_minutes: int | None = None
+    area_id: str | None = None
+    area_name: str | None = None
+    quality_tag: str | None = None
 
 
 class MealSuggestionList(BaseModel):
     items: list[MealSuggestion]
+    total: int
+
+
+class MealAreaSuggestion(BaseModel):
+    id: str
+    name: str
+    popularity: float
+    travel_minutes: int
+    note: str | None = None
+    area_type: str = "food_street"
+    weather_friendly: bool = False
+
+
+class MealAreaList(BaseModel):
+    items: list[MealAreaSuggestion]
+    meal_budget_minutes: int
+    travel_budget_minutes: int
+    min_eat_minutes: int
     total: int
 
 
@@ -103,10 +125,49 @@ class StaySuggestion(BaseModel):
     stay_type: str | None = None
     distance_m: int | None = None
     avg_attraction_distance_m: int | None = None
+    avg_commute_minutes: int | None = None
+    max_commute_minutes: int | None = None
+    day_commutes: list[int] = Field(default_factory=list)
+    tier: str | None = None
     cost_amount: float | None = None
+    over_budget: bool = False
+    price_status: str | None = None
+    price_source: str | None = None
+    price_checked_at: str | None = None
+    price_note: str | None = None
     rating: float | None = None
 
 
 class StaySuggestionList(BaseModel):
     items: list[StaySuggestion]
     total: int
+
+
+class MealSelection(BaseModel):
+    day_index: int = Field(ge=1)
+    meal_type: Literal["lunch", "dinner"]
+    name: str
+    address: str | None = None
+    area_id: str | None = None
+    travel_minutes: int | None = None
+    cost_amount: float | None = None
+
+
+class StaySelection(BaseModel):
+    name: str
+    address: str | None = None
+    business_area: str | None = None
+    tier: str | None = None
+    cost_amount: float | None = None
+    price_status: str | None = None
+    price_source: str | None = None
+    price_checked_at: str | None = None
+    price_note: str | None = None
+    rating: float | None = None
+
+
+class PlanSelections(BaseModel):
+    """与 PlanVersion 绑定的用户选择，不修改只读的 plan_json。"""
+
+    meals: list[MealSelection] = Field(default_factory=list)
+    stay: StaySelection | None = None

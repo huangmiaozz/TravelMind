@@ -10,6 +10,7 @@
 本层只负责「取数与整合」，不做筛选、算距离或评分 —— 那些属于规划器的职责。
 """
 
+from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -111,15 +112,23 @@ def build_candidate(poi: POI, *, latitude: float, longitude: float) -> PlanningC
     纯函数，不依赖数据库会话，便于单测。
     """
     category = poi.category or poi.poi_type
+    ticket = ticket_info(poi.tickets, fallback=poi.avg_cost)
     return PlanningCandidate(
         poi_id=poi.id,
         name=poi.name,
         category=category,
         interest_tags=normalize_tags(poi.interest_tags),
-        estimated_cost=ticket_cost(poi.tickets, fallback=poi.avg_cost),
+        estimated_cost=ticket.adult_price or 0.0,
         visit_minutes=poi.visit_minutes or DEFAULT_VISIT_MINUTES,
         confidence=float(poi.confidence) if poi.confidence is not None else 0.0,
         weather_sensitive=is_weather_sensitive(category, poi.poi_type),
+        opening_status=opening_status(poi.opening_hours),
+        ticket_price=ticket.adult_price,
+        ticket_child_price=ticket.child_price,
+        ticket_status=ticket.status,
+        ticket_source=ticket.source,
+        ticket_source_url=ticket.source_url,
+        ticket_verified_at=ticket.verified_at,
         latitude=latitude,
         longitude=longitude,
         opening_windows=opening_windows(poi.opening_hours),
@@ -148,11 +157,95 @@ def normalize_tags(raw: dict | None) -> dict[str, float]:
     return tags
 
 
-def ticket_cost(tickets: list[Ticket], *, fallback: Decimal | float | None) -> float:
-    """门票价：取最低票种；无票种记录时退回 POI 的参考消费；都没有则记 0。
+@dataclass(frozen=True)
+class TicketInfo:
+    """从 Ticket 行提取的票价和可信度；金额为空表示未知。"""
 
-    优先用门票是因为「景点门票」是需求 4.1 明确要求纳入考量的因素，
-    而 `avg_cost` 只是 POI 的参考人均消费。
+    adult_price: float | None
+    child_price: float | None
+    status: str
+    source: str | None = None
+    source_url: str | None = None
+    verified_at: str | None = None
+
+
+_CHILD_TICKET_TOKENS = ("儿童", "学生", "半价", "优惠", "未成年", "老人")
+_OFFICIAL_SOURCE_TOKENS = ("official", "官方", "官网", "gov")
+
+
+def _is_child_ticket(ticket: Ticket) -> bool:
+    text = f"{ticket.ticket_type or ''} {ticket.price_desc or ''}"
+    return any(token in text for token in _CHILD_TICKET_TOKENS)
+
+
+def _ticket_status(ticket: Ticket) -> str:
+    explicit = (ticket.status or "").lower()
+    if explicit in ("confirmed", "estimated", "unknown"):
+        return explicit
+    source = (ticket.source or "").lower()
+    official = any(token in source for token in _OFFICIAL_SOURCE_TOKENS)
+    if official or (
+        ticket.confidence is not None and float(ticket.confidence) >= 0.9
+    ):
+        return "confirmed"
+    return "estimated"
+
+
+def ticket_info(
+    tickets: list[Ticket], *, fallback: Decimal | float | None
+) -> TicketInfo:
+    """选成人/儿童票种并标注 confirmed/estimated。
+
+    没有 Ticket 时用 POI 的 `avg_cost` 作为参考估算；两者都没有则返回
+    未知金额，不能在费用汇总里按 0 元确认。
+    """
+    priced = [ticket for ticket in tickets if ticket.price is not None]
+    adult_rows = [ticket for ticket in priced if not _is_child_ticket(ticket)]
+    child_rows = [ticket for ticket in priced if _is_child_ticket(ticket)]
+    adult = min(adult_rows, key=lambda item: float(item.price), default=None)
+    child = min(child_rows, key=lambda item: float(item.price), default=None)
+
+    if adult is None and fallback is not None:
+        return TicketInfo(
+            adult_price=float(fallback),
+            child_price=None,
+            status="estimated",
+            source="poi_avg_cost",
+        )
+    if adult is None:
+        return TicketInfo(
+            adult_price=None,
+            child_price=None,
+            status="unknown",
+        )
+
+    if _ticket_status(adult) != "confirmed":
+        verified = None
+    elif adult.verified_at is not None:
+        verified = adult.verified_at.isoformat()
+    elif adult.updated_at is not None:
+        verified = adult.updated_at.date().isoformat()
+    else:
+        verified = None
+    status = _ticket_status(adult)
+    if child is not None and _ticket_status(child) != "confirmed":
+        # 成人已确认、儿童仍是估算时，整项按估算处理，避免把儿童价写成已核。
+        status = "estimated"
+    return TicketInfo(
+        adult_price=float(adult.price),
+        child_price=float(child.price) if child is not None else None,
+        status=status,
+        source=adult.source,
+        source_url=adult.source_url,
+        verified_at=verified if status == "confirmed" else None,
+    )
+
+
+def ticket_cost(tickets: list[Ticket], *, fallback: Decimal | float | None) -> float:
+    """旧口径的参考门票价：取最低票种，没有票种时退回 POI 的参考消费。
+
+    费用汇总使用 `ticket_info` 区分成人/儿童票和核验状态；此函数只为兼容
+    既有调用方和测试保留。
     """
     prices = [float(ticket.price) for ticket in tickets if ticket.price is not None]
     if prices:
@@ -160,6 +253,19 @@ def ticket_cost(tickets: list[Ticket], *, fallback: Decimal | float | None) -> f
     if fallback is not None:
         return float(fallback)
     return 0.0
+
+
+def opening_status(hours: list[OpeningHour]) -> str:
+    """开放时间可信度：全部来自官方且置信度足够高才算 confirmed。"""
+    if not hours:
+        return "unknown"
+    official = all(
+        any(token in (hour.source or "").lower() for token in _OFFICIAL_SOURCE_TOKENS)
+        and hour.confidence is not None
+        and float(hour.confidence) >= 0.9
+        for hour in hours
+    )
+    return "confirmed" if official else "estimated"
 
 
 def opening_windows(hours: list[OpeningHour]) -> tuple[OpeningWindow, ...]:

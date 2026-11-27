@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     # 而不是回退到一个看似合理的猜测值。
     amap_api_key: str | None = None
 
+    # RollingGo Hotel MCP 的开发者 Key；未配置时酒店价格保持 unknown。
+    rollinggo_api_key: str | None = None
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

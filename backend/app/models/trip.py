@@ -93,6 +93,8 @@ class PlanVersion(Base):
     request_json: Mapped[dict] = mapped_column(JSONDocument, default=dict)
     plan_json: Mapped[dict] = mapped_column(JSONDocument, default=dict)
     data_snapshot: Mapped[dict] = mapped_column(JSONDocument, default=dict)
+    # 用户对餐厅/住宿的选择；与只读的 plan_json 分开保存。
+    selection_json: Mapped[dict] = mapped_column(JSONDocument, default=dict)
 
     generated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

@@ -25,6 +25,7 @@ from dataclasses import dataclass, replace
 from app.planners.models import PlanningWeather, TransitSegment
 from app.planners.routing import RouteProvider
 from app.services.coordinates import meters_between, wgs84_to_gcj02
+from app.services.hotel_recommendations import gateways_for_poi
 
 TRANSIT_QUERY_DISTANCE_M = 1500
 WALK_LONG_DURATION_S = 20 * 60
@@ -111,12 +112,27 @@ def score_option(
             max_walk_m if max_walk_m is not None else 3000,
         )
     )
+    # 公共交通内部优先地铁：纯公交方案小幅降权，含地铁方案小幅加权。
+    # 公共交通内部以最快为主，地铁只做很小的同分偏好。
+    transit_bonus = 0.0
+    if option.mode == "transit" and option.segments:
+        has_subway = any(
+            segment.mode == "subway" for segment in option.segments
+        )
+        has_rail = any(
+            segment.mode == "train" for segment in option.segments
+        )
+        transit_bonus = -0.03 if has_subway else 0.03
+        if has_rail:
+            # 京张高铁是八达岭的门户方案，避免被更慢的 877 压下去。
+            transit_bonus -= 0.15
     return (
         time_score * 0.30
         + cost_score * 0.30
         + walk_score * 0.20
         + _weather_penalty(option.mode, weather) * 0.10
         + _preference_penalty(option.mode, preference) * 0.10
+        + transit_bonus
     )
 
 
@@ -141,6 +157,88 @@ def _to_option(mode: str, raw, *, cost=None, cost_basis="unknown", is_estimate=F
     )
 
 
+RAIL_FARE_YUAN = 25.0
+
+
+def _gateway_options(
+    provider: RouteProvider,
+    origin_gcj: tuple[float, float],
+    destination_gcj: tuple[float, float],
+    *,
+    origin_name: str | None,
+    destination_name: str | None,
+    city: str | None,
+) -> list[TransportOption]:
+    """给八达岭这类特殊景点补一条“门户 + 高铁”方案。
+
+    高德公交接口通常不返回京张高铁，所以这里用人工维护的门户耗时和票价拼一条
+    可选方案，交给统一评分比较。它是估算，不伪装成高德实时路线。
+    """
+    if city is None:
+        return []
+    options: list[TransportOption] = []
+
+    def append_leg(leg, gateway, *, reverse: bool) -> None:
+        if leg.status != "ok" or leg.duration_s is None:
+            return
+        rail_seconds = (gateway.duration_minutes + gateway.buffer_minutes) * 60
+        is_rail = gateway.mode == "rail"
+        line_name = "京张高铁" if is_rail else "877 路"
+        line_type = "高铁" if is_rail else "公交"
+        terminal = "八达岭长城站" if is_rail else "八达岭"
+        rail_segment = TransitSegment(
+            mode="train" if is_rail else "bus",
+            line_name=line_name,
+            line_type=line_type,
+            departure_stop=terminal if reverse else gateway.name,
+            arrival_stop=gateway.name if reverse else terminal,
+            duration_s=rail_seconds,
+        )
+        segments = (
+            (rail_segment,) + leg.segments
+            if reverse
+            else leg.segments + (rail_segment,)
+        )
+        cost = (leg.cost_amount or 0.0) + RAIL_FARE_YUAN
+        options.append(
+            TransportOption(
+                mode="transit",
+                distance_m=leg.distance_m,
+                duration_s=leg.duration_s + rail_seconds,
+                walking_distance_m=leg.walking_distance_m,
+                cost_amount=round(cost, 2),
+                cost_basis="per_person",
+                status="ok",
+                source="amap+gateway",
+                is_estimate=True,
+                reason=f"{gateway.name} + {line_name}（门户方案）",
+                segments=segments,
+            )
+        )
+
+    if destination_name:
+        for gateway in gateways_for_poi(destination_name):
+            leg = provider.route(
+                origin_gcj,
+                gateway.location,
+                "transit",
+                city=city,
+                cityd=city,
+            )
+            append_leg(leg, gateway, reverse=False)
+    if origin_name:
+        for gateway in gateways_for_poi(origin_name):
+            leg = provider.route(
+                gateway.location,
+                destination_gcj,
+                "transit",
+                city=city,
+                cityd=city,
+            )
+            append_leg(leg, gateway, reverse=True)
+    return options
+
+
 def build_transport_options(
     provider: RouteProvider,
     origin: tuple[float, float],
@@ -151,6 +249,8 @@ def build_transport_options(
     city: str | None,
     daily_budget: float,
     max_walk_m: float | None,
+    origin_name: str | None = None,
+    destination_name: str | None = None,
 ) -> list[TransportOption]:
     """查询候选并返回按评分从低到高排序的列表。"""
     straight_m = meters_between(
@@ -225,27 +325,35 @@ def build_transport_options(
         if transit.status == "ok" and transit.duration_s is not None:
             transit_ok = True
             alternatives = getattr(transit, "alternatives", ())
-            if alternatives:
-                for index, alternative in enumerate(alternatives, start=1):
-                    options.append(
-                        TransportOption(
-                            mode="transit",
-                            distance_m=alternative.distance_m,
-                            duration_s=alternative.duration_s,
-                            walking_distance_m=alternative.walking_distance_m,
-                            cost_amount=alternative.cost_amount,
-                            cost_basis=(
-                                "per_person"
-                                if alternative.cost_amount is not None
-                                else "unknown"
-                            ),
-                            status="ok",
-                            source=transit.source,
-                            is_estimate=False,
-                            reason=f"公共交通方案 {index}",
-                            segments=alternative.segments,
-                        )
+            valid_alternatives = [
+                item for item in alternatives if item.duration_s is not None
+            ]
+            if valid_alternatives:
+                # 高德已按“最快捷”返回多方案；这里只取耗时最短的一条，
+                # 避免费用/步行权重把更慢的公交方案顶到前面。
+                fastest = min(
+                    valid_alternatives,
+                    key=lambda item: item.duration_s,
+                )
+                options.append(
+                    TransportOption(
+                        mode="transit",
+                        distance_m=fastest.distance_m,
+                        duration_s=fastest.duration_s,
+                        walking_distance_m=fastest.walking_distance_m,
+                        cost_amount=fastest.cost_amount,
+                        cost_basis=(
+                            "per_person"
+                            if fastest.cost_amount is not None
+                            else "unknown"
+                        ),
+                        status="ok",
+                        source=transit.source,
+                        is_estimate=False,
+                        reason="公共交通最快方案",
+                        segments=fastest.segments,
                     )
+                )
             else:
                 options.append(
                     _to_option(
@@ -256,6 +364,19 @@ def build_transport_options(
                         reason="公交/地铁，票价来自高德" if transit.cost_amount is not None else "公交/地铁，票价未知",
                     )
                 )
+
+    if origin_name or destination_name:
+        gateway_options = _gateway_options(
+            provider,
+            origin_gcj,
+            destination_gcj,
+            origin_name=origin_name,
+            destination_name=destination_name,
+            city=city,
+        )
+        if gateway_options:
+            options.extend(gateway_options)
+            transit_ok = True
 
     need_taxi = (
         preference == "taxi"

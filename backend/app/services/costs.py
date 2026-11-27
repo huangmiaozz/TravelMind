@@ -23,6 +23,9 @@ CITY_COST_DEFAULTS = {
 class CostBreakdown:
     tickets_amount: float
     tickets_status: str
+    tickets_confirmed_amount: float
+    tickets_estimated_amount: float
+    tickets_unknown_count: int
     transport_amount: float
     transport_status: str
     meals_amount: float
@@ -39,10 +42,53 @@ class CostBreakdown:
 def build_costs(
     trip: TripPlan, payload: PlanCreateRequest, city: str
 ) -> CostBreakdown:
-    ticket_amount = round(
-        sum(item.estimated_cost for day in trip.days for item in day.items), 2
-    )
-    ticket_status = "estimated" if ticket_amount > 0 else "unknown"
+    ticket_confirmed = 0.0
+    ticket_estimated = 0.0
+    ticket_unknown = 0
+    ticket_unknown_names: list[str] = []
+    child_price_assumed = False
+    ticket_confirmed_count = 0
+    ticket_estimated_count = 0
+
+    for day in trip.days:
+        for item in day.items:
+            price = item.ticket_price
+            if price is None or item.ticket_status == "unknown":
+                ticket_unknown += 1
+                ticket_unknown_names.append(item.name)
+                continue
+            amount = price * payload.adults
+            child_price = item.ticket_child_price
+            item_child_assumed = False
+            if payload.children:
+                if child_price is None:
+                    # 没有儿童票时按成人价保守估算，并在状态下标“估算”；
+                    # 免费景点不需要再提示儿童票价缺失。
+                    child_price = price
+                    if price > 0:
+                        child_price_assumed = True
+                        item_child_assumed = True
+                amount += child_price * payload.children
+            if item.ticket_status == "confirmed" and not item_child_assumed:
+                ticket_confirmed += amount
+                ticket_confirmed_count += 1
+            else:
+                ticket_estimated += amount
+                ticket_estimated_count += 1
+
+    ticket_amount = round(ticket_confirmed + ticket_estimated, 2)
+    if ticket_unknown:
+        tickets_status = (
+            "partial"
+            if (ticket_confirmed_count or ticket_estimated_count)
+            else "unknown"
+        )
+    elif ticket_estimated_count or child_price_assumed:
+        tickets_status = "estimated"
+    elif ticket_confirmed_count:
+        tickets_status = "confirmed"
+    else:
+        tickets_status = "unknown"
 
     transport_amount = 0.0
     transport_unknown = False
@@ -78,8 +124,12 @@ def build_costs(
     difference = round(budget - total, 2) if budget > 0 else 0.0
 
     unknown: list[str] = []
-    if ticket_status == "unknown":
-        unknown.append("门票票价未核验，未按 0 元确认")
+    if ticket_unknown:
+        names = "、".join(ticket_unknown_names[:5])
+        suffix = f"（{names}）" if names else ""
+        unknown.append(f"门票票价未核验，未按 0 元确认{suffix}")
+    if child_price_assumed:
+        unknown.append("儿童票价未核验，已按成人价估算")
     if transport_unknown:
         unknown.append("部分交通费用未知")
     if meals_status == "unknown":
@@ -89,7 +139,10 @@ def build_costs(
 
     return CostBreakdown(
         tickets_amount=ticket_amount,
-        tickets_status=ticket_status,
+        tickets_status=tickets_status,
+        tickets_confirmed_amount=round(ticket_confirmed, 2),
+        tickets_estimated_amount=round(ticket_estimated, 2),
+        tickets_unknown_count=ticket_unknown,
         transport_amount=round(transport_amount, 2),
         transport_status=transport_status,
         meals_amount=meals_amount,

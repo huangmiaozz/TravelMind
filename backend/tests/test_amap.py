@@ -240,6 +240,12 @@ def test_nearby_hotels_filters_guesthouses() -> None:
                         "typecode": "100100",
                         "location": "119.30,26.08",
                     },
+                    {
+                        "name": "北京邮电会议中心",
+                        "type": "住宿服务;宾馆酒店;宾馆酒店",
+                        "typecode": "100100",
+                        "location": "119.30,26.08",
+                    },
                 ],
             },
         )

@@ -21,9 +21,9 @@ from app.planners.transport_selector import (
 # 所有候选路线都失败时，为继续排程使用的保守回退耗时。它不是真实路线。
 FALLBACK_LEG_SECONDS = 15 * 60
 
-# 固定用餐窗口；晚餐 90 分钟，给用户留足时间。
+# 固定用餐窗口；午餐 120 分钟包含去餐厅、用餐和返回/去下一景点。
 LUNCH_START = time(12, 0)
-LUNCH_END = time(13, 0)
+LUNCH_END = time(14, 0)
 DINNER_START = time(18, 0)
 DINNER_END = time(19, 30)
 
@@ -164,6 +164,8 @@ def generate_day_plan(
                 city=city,
                 daily_budget=preferences.budget_total,
                 max_walk_m=max_walk_m,
+                origin_name=getattr(previous, "name", None),
+                destination_name=getattr(candidate, "name", None),
             )
 
         selected: TransportOption | None = None
@@ -258,6 +260,21 @@ def generate_day_plan(
                 estimated_cost=candidate.estimated_cost,
                 score=scored.total_score,
                 opening_known=window.known,
+                opening_status=candidate.opening_status,
+                ticket_price=(
+                    candidate.ticket_price
+                    if candidate.ticket_price is not None
+                    else (candidate.estimated_cost or None)
+                ),
+                ticket_child_price=candidate.ticket_child_price,
+                ticket_status=(
+                    candidate.ticket_status
+                    if candidate.ticket_price is not None
+                    else ("estimated" if candidate.estimated_cost > 0 else "unknown")
+                ),
+                ticket_source=candidate.ticket_source,
+                ticket_source_url=candidate.ticket_source_url,
+                ticket_verified_at=candidate.ticket_verified_at,
                 latitude=candidate.latitude,
                 longitude=candidate.longitude,
             )

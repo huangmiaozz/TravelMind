@@ -38,7 +38,7 @@ def test_generate_day_plan_respects_time_and_item_limits() -> None:
     preferences = PlanningPreferences(
         interests={"history": 1.0},
         daily_start=time(9, 0),
-        daily_end=time(15, 0),
+        daily_end=time(17, 0),
         max_daily_items=2,
     )
     candidates = [
@@ -50,7 +50,7 @@ def test_generate_day_plan_respects_time_and_item_limits() -> None:
 
     assert len(plan.items) == 2
     assert plan.items[0].start_time == time(9, 0)
-    assert plan.items[-1].end_time <= time(15, 0)
+    assert plan.items[-1].end_time <= time(17, 0)
     assert plan.estimated_cost == 40
 
 
@@ -78,7 +78,7 @@ def test_meal_blocks_are_reserved_and_not_overlapped() -> None:
 
     assert [meal.meal_type for meal in plan.meals] == ["lunch", "dinner"]
     assert plan.meals[0].start_time == time(12, 0)
-    assert plan.meals[0].end_time == time(13, 0)
+    assert plan.meals[0].end_time == time(14, 0)
     assert plan.meals[1].start_time == time(18, 0)
     assert plan.meals[1].end_time == time(19, 30)
     for item in plan.items:

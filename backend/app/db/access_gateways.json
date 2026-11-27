@@ -1,0 +1,28 @@
+{
+  "八达岭长城": [
+    {
+      "name": "德胜门",
+      "location_gcj02": [116.3830, 39.9490],
+      "mode": "bus",
+      "duration_minutes": 70,
+      "buffer_minutes": 10,
+      "note": "877 路直达，受路况和排队影响"
+    },
+    {
+      "name": "清河站",
+      "location_gcj02": [116.3100, 39.9990],
+      "mode": "rail",
+      "duration_minutes": 20,
+      "buffer_minutes": 25,
+      "note": "京张高铁约 20 分钟，含站到景区接驳/安检缓冲"
+    },
+    {
+      "name": "北京北站",
+      "location_gcj02": [116.3530, 39.9450],
+      "mode": "rail",
+      "duration_minutes": 30,
+      "buffer_minutes": 25,
+      "note": "京张高铁约 30 分钟，另含站到景区接驳/安检缓冲"
+    }
+  ]
+}

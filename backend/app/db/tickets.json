@@ -1,0 +1,235 @@
+{
+  "source": "Manual official verification",
+  "verified_at": "2026-11-26",
+  "cities": {
+    "北京": [
+      {
+        "poi": "故宫博物院",
+        "note": "大门票旺季 60 元、淡季 40 元；当前按旺季价估算，淡季未建模。学生/老人优惠以官方票务政策为准。",
+        "tickets": [
+          {
+            "ticket_type": "成人票（旺季）",
+            "price": 60,
+            "status": "estimated",
+            "applies_to": "adult",
+            "price_desc": "旺季 4/1-10/31；淡季 40 元",
+            "source": "official_website",
+            "source_url": "https://www.dpm.org.cn/singles_detail/257830.html",
+            "verified_at": "2026-11-26",
+            "confidence": 0.9
+          },
+          {
+            "ticket_type": "学生票",
+            "price": 30,
+            "status": "estimated",
+            "applies_to": "student",
+            "price_desc": "按官方优惠政策，实际以证件核验为准",
+            "source": "official_website",
+            "source_url": "https://www.dpm.org.cn/singles_detail/257830.html",
+            "verified_at": "2026-11-26",
+            "confidence": 0.8
+          }
+        ]
+      },
+      {
+        "poi": "中国国家博物馆",
+        "note": "免费预约参观，周一闭馆（法定节假日除外）。",
+        "tickets": [
+          {
+            "ticket_type": "免费预约票",
+            "price": 0,
+            "status": "confirmed",
+            "applies_to": "all",
+            "price_desc": "实名免费预约，需按预约时段入馆",
+            "source": "official_website",
+            "source_url": "https://www.chnmuseum.cn/cg/cgyy/202511/t20251109_277547.shtml",
+            "verified_at": "2026-11-26",
+            "confidence": 1.0
+          }
+        ]
+      },
+      {
+        "poi": "天坛公园",
+        "note": "联票旺季 34 元、淡季 28 元；当前按旺季联票估算。",
+        "tickets": [
+          {
+            "ticket_type": "成人联票（旺季）",
+            "price": 34,
+            "status": "estimated",
+            "applies_to": "adult",
+            "price_desc": "含大门票、祈年殿、回音壁、圜丘等；淡季 28 元",
+            "source": "official_website",
+            "source_url": "https://www.tiantanpark.com/",
+            "verified_at": "2026-11-26",
+            "confidence": 0.85
+          },
+          {
+            "ticket_type": "学生联票",
+            "price": 17,
+            "status": "estimated",
+            "applies_to": "student",
+            "price_desc": "按官方优惠政策，实际以证件核验为准",
+            "source": "official_website",
+            "source_url": "https://www.tiantanpark.com/",
+            "verified_at": "2026-11-26",
+            "confidence": 0.8
+          }
+        ]
+      },
+      {
+        "poi": "颐和园",
+        "note": "大门票旺季 30 元、淡季 20 元；联票旺季 60 元。当前按旺季大门票估算。",
+        "tickets": [
+          {
+            "ticket_type": "成人门票（旺季）",
+            "price": 30,
+            "status": "estimated",
+            "applies_to": "adult",
+            "price_desc": "旺季 4/1-10/31；淡季 20 元；联票另计",
+            "source": "official_website",
+            "source_url": "https://www.summerpalace.net.cn/visit.html",
+            "verified_at": "2026-11-26",
+            "confidence": 0.9
+          },
+          {
+            "ticket_type": "学生门票",
+            "price": 15,
+            "status": "estimated",
+            "applies_to": "student",
+            "price_desc": "按官方优惠政策，实际以证件核验为准",
+            "source": "official_website",
+            "source_url": "https://www.summerpalace.net.cn/visit.html",
+            "verified_at": "2026-11-26",
+            "confidence": 0.8
+          }
+        ]
+      },
+      {
+        "poi": "八达岭长城",
+        "note": "旺季 40 元、淡季 35 元；当前按旺季价估算。",
+        "tickets": [
+          {
+            "ticket_type": "成人票（旺季）",
+            "price": 40,
+            "status": "estimated",
+            "applies_to": "adult",
+            "price_desc": "旺季 4-10 月 40 元；淡季 35 元",
+            "source": "official_public_data",
+            "source_url": "https://www.badaling.cn/",
+            "verified_at": "2026-11-26",
+            "confidence": 0.85
+          },
+          {
+            "ticket_type": "学生票",
+            "price": 20,
+            "status": "estimated",
+            "applies_to": "student",
+            "price_desc": "按官方优惠政策，实际以证件核验为准",
+            "source": "official_public_data",
+            "source_url": "https://www.badaling.cn/",
+            "verified_at": "2026-11-26",
+            "confidence": 0.75
+          }
+        ]
+      }
+    ],
+    "福州": [
+      {
+        "poi": "三坊七巷",
+        "note": "街区免费开放；小黄楼、水榭戏台等部分景点单独收费，联票 70 元。当前按街区免费计。",
+        "tickets": [
+          {
+            "ticket_type": "街区免费票",
+            "price": 0,
+            "status": "confirmed",
+            "applies_to": "all",
+            "price_desc": "街区免费；部分景点另收费",
+            "source": "official_government",
+            "source_url": "http://fgw.fuzhou.gov.cn/zzbz/jgysf/jfgs/202505/t20250519_5020947.htm",
+            "verified_at": "2026-11-26",
+            "confidence": 1.0
+          }
+        ]
+      },
+      {
+        "poi": "福州国家森林公园",
+        "note": "园区免费开放；园内单独收费项目未计入。",
+        "tickets": [
+          {
+            "ticket_type": "免费票",
+            "price": 0,
+            "status": "confirmed",
+            "applies_to": "all",
+            "price_desc": "园区免费开放",
+            "source": "official_public_data",
+            "source_url": "http://www.fjta.com/jingdian/travels/42",
+            "verified_at": "2026-11-26",
+            "confidence": 0.9
+          }
+        ]
+      },
+      {
+        "poi": "福州市鼓山旅游景区",
+        "note": "鼓山风景区与涌泉寺合并售票 40 元/人次（2025-04-18 起）。",
+        "tickets": [
+          {
+            "ticket_type": "成人票",
+            "price": 40,
+            "status": "confirmed",
+            "applies_to": "adult",
+            "price_desc": "风景区与涌泉寺合并售票；年票 50 元",
+            "source": "official_government",
+            "source_url": "http://fgw.fuzhou.gov.cn/zzbz/tzgg/202504/t20250414_5004383.htm",
+            "verified_at": "2026-11-26",
+            "confidence": 1.0
+          },
+          {
+            "ticket_type": "学生票",
+            "price": 20,
+            "status": "estimated",
+            "applies_to": "student",
+            "price_desc": "按优待政策，实际以证件核验为准",
+            "source": "official_government",
+            "source_url": "http://fgw.fuzhou.gov.cn/zzbz/tzgg/202504/t20250414_5004383.htm",
+            "verified_at": "2026-11-26",
+            "confidence": 0.8
+          }
+        ]
+      },
+      {
+        "poi": "西湖公园",
+        "note": "公园免费开放。",
+        "tickets": [
+          {
+            "ticket_type": "免费票",
+            "price": 0,
+            "status": "confirmed",
+            "applies_to": "all",
+            "price_desc": "公园免费开放",
+            "source": "official_public_data",
+            "source_url": "http://www.fjta.com/jingdian/travels/53",
+            "verified_at": "2026-11-26",
+            "confidence": 0.9
+          }
+        ]
+      },
+      {
+        "poi": "福建博物院",
+        "note": "免费入场；周一闭馆（法定节假日除外）。",
+        "tickets": [
+          {
+            "ticket_type": "免费票",
+            "price": 0,
+            "status": "confirmed",
+            "applies_to": "all",
+            "price_desc": "免费入场，无需预约（以官方公告为准）",
+            "source": "official_website",
+            "source_url": "http://mp.weixin.qq.com/s?__biz=MzAwODc4MTU2Mw==&mid=2712327386&idx=2&sn=57203bd5d8849b4e8747f6bc9f7a109b",
+            "verified_at": "2026-11-26",
+            "confidence": 1.0
+          }
+        ]
+      }
+    ]
+  }
+}

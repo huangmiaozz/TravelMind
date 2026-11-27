@@ -2,9 +2,10 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import GlobeScene from './components/GlobeScene.vue'
 import ChinaMapScene from './components/ChinaMapScene.vue'
-import { createPlan, createTrip, mealSuggestions, planMapUrl, staySuggestions, type MealSuggestion, type PlanDetail, type StaySuggestion } from './api'
+import { createPlan, createTrip, deletePlanVersion, getPlanSelections, getPlanVersion, listPlanVersions, mealAreaRestaurants, mealAreas, nearbyMeals, planMapUrl, recalculatePlanCosts, savePlanSelections, searchMealAreaRestaurants, searchNearbyMeals, searchStays, staySuggestions, type MealArea, type MealSuggestion, type PlanDetail, type PlanSelections, type PlanVersionSummary, type StaySuggestion } from './api'
 
 type DayPlan = PlanDetail['days'][number]
+type PlanItem = DayPlan['items'][number]
 type RouteLegItem = DayPlan['legs'][number]
 type TransitStep = RouteLegItem['segments'][number]
 
@@ -44,24 +45,81 @@ const loading = ref(false)
 const errorMessage = ref('')
 const plan = ref<PlanDetail | null>(null)
 const tripId = ref<number | null>(null)
+const versions = ref<PlanVersionSummary[]>([])
+const versionsLoading = ref(false)
+const versionsError = ref('')
+const showVersions = ref(false)
 const mapErrors = ref<Record<string, boolean>>({})
 const mealModal = ref<{ dayIndex: number; mealType: string; label: string } | null>(null)
 const mealOptions = ref<MealSuggestion[]>([])
+const mealAreasList = ref<MealArea[]>([])
+const activeMealArea = ref<MealArea | null>(null)
+const mealView = ref<'areas' | 'restaurants' | 'nearby'>('areas')
+const mealBudgetMinutes = ref(0)
+const mealTravelBudget = ref(0)
 const mealLoading = ref(false)
+const mealAreaQuery = ref('')
+const mealAreaSearching = ref(false)
+const mealAreaSearchError = ref('')
+const nearbyQuery = ref('')
+const nearbySearching = ref(false)
+const nearbySearchError = ref('')
+const mealAreaGroups = computed(() => {
+  const groups = [
+    { type: 'food_street', label: '美食街' },
+    { type: 'mall', label: '商场 · 室内' },
+    { type: 'neighborhood', label: '商圈' },
+  ]
+  return groups
+    .map((group) => ({
+      ...group,
+      items: mealAreasList.value.filter((area) => area.area_type === group.type),
+    }))
+    .filter((group) => group.items.length > 0)
+})
 const mealError = ref('')
 const mealChoices = ref<Record<string, MealSuggestion>>({})
+const selectionsError = ref('')
+const costUpdating = ref(false)
+const costDirty = ref(false)
+const costError = ref('')
 const stays = ref<StaySuggestion[]>([])
 const stayLoading = ref(false)
 const stayError = ref('')
 const selectedStay = ref<StaySuggestion | null>(null)
-// 旅行偏好（你的节奏）：多选，默认选中第一项
-const preferences = ref<string[]>(['历史文化'])
-const preferenceOptions = [
-  { name: '历史文化', desc: '博物馆、古迹与城市记忆' },
-  { name: '自然风光', desc: '公园、山野与开阔视野' },
-  { name: '本地美食', desc: '街巷、市场与餐桌故事' },
-  { name: '慢一点', desc: '每天留出真正的余地' },
+const stayQuery = ref('')
+const staySearchResults = ref<StaySuggestion[]>([])
+const staySearching = ref(false)
+const staySearchError = ref('')
+const staySearchActive = ref(false)
+const visibleStays = computed(() =>
+  staySearchActive.value ? staySearchResults.value : stays.value,
+)
+// 兴趣用 0–100 滑块表达强度；默认保留旧版“历史文化”优先的行为。
+type InterestKey = 'history' | 'nature' | 'food'
+const interestOptions: {
+  key: InterestKey
+  name: string
+  desc: string
+}[] = [
+  { key: 'history', name: '历史文化', desc: '博物馆、古迹与城市记忆' },
+  { key: 'nature', name: '自然风光', desc: '公园、山野与开阔视野' },
+  { key: 'food', name: '本地美食', desc: '街巷、市场与餐桌故事' },
 ]
+const interestValues = ref<Record<InterestKey, number>>({
+  history: 80,
+  nature: 0,
+  food: 0,
+})
+// 0 最轻松、100 最充实；同时决定每日条目上限和行程缓冲。
+const pace = ref(50)
+const dailyItemLimit = computed(() =>
+  pace.value <= 33 ? 2 : pace.value >= 72 ? 4 : 3,
+)
+const avoidTightSchedule = computed(() => pace.value < 67)
+const paceLabel = computed(() =>
+  pace.value <= 33 ? '轻松' : pace.value >= 72 ? '充实' : '适中',
+)
 
 const navItems: { id: View; label: string; hint: string }[] = [
   { id: 'overview', label: '总览', hint: 'Overview' },
@@ -167,25 +225,13 @@ function handleScrollEnd() {
   }
 }
 
-/** 切换旅行偏好（多选） */
-function togglePreference(name: string) {
-  preferences.value = preferences.value.includes(name)
-    ? preferences.value.filter((item) => item !== name)
-    : [...preferences.value, name]
-}
-
 function buildInterests(): Record<string, number> {
-  const tagMap: Record<string, string> = {
-    历史文化: 'history',
-    自然风光: 'nature',
-    本地美食: 'food',
-  }
-  const interests: Record<string, number> = {}
-  for (const preference of preferences.value) {
-    const tag = tagMap[preference]
-    if (tag) interests[tag] = 80
-  }
-  return Object.keys(interests).length ? interests : { history: 50 }
+  return Object.fromEntries(
+    interestOptions.map((option) => [
+      option.key,
+      Math.round(interestValues.value[option.key]),
+    ]),
+  )
 }
 
 async function generatePlan(reuseTrip: boolean) {
@@ -196,6 +242,7 @@ async function generatePlan(reuseTrip: boolean) {
   }
   loading.value = true
   errorMessage.value = ''
+  clearSelections()
   try {
     const city = destination.value.trim()
     const dayCount = Math.max(1, Math.min(30, Number(days.value) || 3))
@@ -213,13 +260,15 @@ async function generatePlan(reuseTrip: boolean) {
       children: 0,
       budget_total: Math.max(0, Number(budget.value) || 0),
       interests: buildInterests(),
-      pace: preferences.value.includes('慢一点') ? 30 : 65,
+      pace: pace.value,
       transport_preference: transportPreference.value,
       daily_start: '09:00',
       daily_end: '20:00',
-      max_daily_items: 3,
+      max_daily_items: dailyItemLimit.value,
+      avoid_tight_schedule: avoidTightSchedule.value,
       max_walk_km: 8,
     })
+    await loadSelections(plan.value.plan_id)
     selectView('plans')
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '生成方案失败'
@@ -237,10 +286,82 @@ function regeneratePlan() {
   void generatePlan(true)
 }
 
+async function refreshVersions(id: number | null = tripId.value) {
+  if (id === null) {
+    versions.value = []
+    return
+  }
+  versionsLoading.value = true
+  versionsError.value = ''
+  try {
+    const result = await listPlanVersions(id)
+    versions.value = result.items
+  } catch (error) {
+    versionsError.value = error instanceof Error ? error.message : '读取版本历史失败'
+  } finally {
+    versionsLoading.value = false
+  }
+}
+
+function toggleVersions() {
+  showVersions.value = !showVersions.value
+  if (showVersions.value) void refreshVersions()
+}
+
+async function openVersion(version: PlanVersionSummary) {
+  versionsError.value = ''
+  try {
+    const loaded = await getPlanVersion(version.plan_id)
+    plan.value = loaded
+    tripId.value = loaded.trip_id
+    await loadSelections(loaded.plan_id)
+    showVersions.value = false
+    selectView('plans')
+  } catch (error) {
+    versionsError.value = error instanceof Error ? error.message : '读取版本失败'
+  }
+}
+
+async function removeVersion(version: PlanVersionSummary) {
+  if (!window.confirm(`删除方案 v${version.version_no}？此操作不可撤销。`)) return
+  versionsError.value = ''
+  try {
+    await deletePlanVersion(version.plan_id)
+    if (plan.value?.plan_id === version.plan_id) {
+      plan.value = null
+      clearSelections()
+      const remaining = versions.value.filter((item) => item.plan_id !== version.plan_id)
+      if (remaining.length) await openVersion(remaining[remaining.length - 1])
+    }
+    await refreshVersions()
+  } catch (error) {
+    versionsError.value = error instanceof Error ? error.message : '删除版本失败'
+  }
+}
+
+function versionTime(value: string): string {
+  return new Date(value).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 function selectView(view: View) {
   activeView.value = view
   showBrief.value = false
+  if (view === 'plans' && tripId.value !== null) void refreshVersions()
   window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+function navigate(view: View) {
+  // 住宿页需要先取推荐；只切视图会停留在“没有返回住宿”的空状态。
+  if (view === 'stays') {
+    void openStays()
+    return
+  }
+  selectView(view)
 }
 
 const planDateRange = computed(() => {
@@ -350,7 +471,35 @@ function statusLabel(status: string): string {
 }
 
 function costStatusLabel(status: string): string {
-  return ({ confirmed: '已确认', estimated: '估算', partial: '部分未知', unknown: '待核' } as Record<string, string>)[status] ?? status
+  return ({ confirmed: '已确认', quoted: '实时报价', estimated: '估算', partial: '部分未知', unknown: '待核' } as Record<string, string>)[status] ?? status
+}
+
+function costUpdatedLabel(value?: string | null): string {
+  if (!value) return ''
+  return `已按选择更新 ${new Date(value).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
+}
+
+function stayPriceLabel(stay: StaySuggestion): string {
+  if (stay.price_status === 'no_availability') return '该日期暂无可订房型'
+  if (stay.price_status === 'not_found') return '未匹配到该酒店报价'
+  if (stay.price_status === 'query_failed') return '查价失败，价格待核'
+  return '价格待核'
+}
+
+function openingStatusLabel(item: PlanItem): string {
+  if (item.opening_status === 'confirmed') return '开放时间已核'
+  if (item.opening_status === 'estimated') return '开放时间估算'
+  return item.opening_known ? '开放时间待核' : '开放时间未知'
+}
+
+function ticketStatusLabel(status?: string): string {
+  return ({ confirmed: '已核', estimated: '估算', unknown: '待核' } as Record<string, string>)[status ?? 'unknown'] ?? '待核'
+}
+
+function itemTicketLabel(item: PlanItem): string {
+  if (!item.ticket_status || item.ticket_status === 'unknown') return '票价待核'
+  const price = item.ticket_price ?? item.estimated_cost
+  return price === 0 ? '免费' : `${formatMoney(price)}/人`
 }
 
 function mealLabel(mealType: string): string {
@@ -361,19 +510,236 @@ function mealChoiceKey(dayIndex: number, mealType: string): string {
   return `${dayIndex}-${mealType}`
 }
 
+function clearSelections() {
+  mealChoices.value = {}
+  selectedStay.value = null
+  selectionsError.value = ''
+  costDirty.value = false
+  costError.value = ''
+}
+
+async function loadSelections(planId: number) {
+  clearSelections()
+  try {
+    const saved = await getPlanSelections(planId)
+    for (const meal of saved.meals) {
+      mealChoices.value[mealChoiceKey(meal.day_index - 1, meal.meal_type)] = {
+        name: meal.name,
+        address: meal.address,
+        distance_m: null,
+        cost_amount: null,
+        rating: null,
+        travel_minutes: meal.travel_minutes,
+        area_id: meal.area_id,
+        area_name: null,
+        quality_tag: null,
+      }
+    }
+    if (saved.stay) {
+      selectedStay.value = {
+        name: saved.stay.name,
+        address: saved.stay.address,
+        business_area: saved.stay.business_area,
+        stay_type: null,
+        distance_m: null,
+        avg_attraction_distance_m: null,
+        avg_commute_minutes: null,
+        max_commute_minutes: null,
+        day_commutes: [],
+        tier: saved.stay.tier,
+        cost_amount: saved.stay.cost_amount,
+        over_budget: false,
+        price_status: saved.stay.price_status,
+        price_source: saved.stay.price_source,
+        price_checked_at: saved.stay.price_checked_at,
+        price_note: saved.stay.price_note,
+        rating: saved.stay.rating,
+      }
+    }
+  } catch (error) {
+    selectionsError.value = error instanceof Error ? error.message : '读取已保存选择失败'
+  }
+}
+
+function selectionPayload(): PlanSelections {
+  return {
+    meals: Object.entries(mealChoices.value).map(([key, meal]) => {
+      const [dayIndex, mealType] = key.split('-')
+      return {
+        day_index: Number(dayIndex) + 1,
+        meal_type: mealType,
+        name: meal.name,
+        address: meal.address,
+        area_id: meal.area_id,
+        travel_minutes: meal.travel_minutes,
+        cost_amount: meal.cost_amount,
+      }
+    }),
+    stay: selectedStay.value
+      ? {
+          name: selectedStay.value.name,
+          address: selectedStay.value.address,
+          business_area: selectedStay.value.business_area,
+          tier: selectedStay.value.tier,
+          cost_amount: selectedStay.value.cost_amount,
+          price_status: selectedStay.value.price_status,
+          price_source: selectedStay.value.price_source,
+          price_checked_at: selectedStay.value.price_checked_at,
+          price_note: selectedStay.value.price_note,
+          rating: selectedStay.value.rating,
+        }
+      : null,
+  }
+}
+
+async function persistSelections() {
+  if (!plan.value) return
+  try {
+    await savePlanSelections(plan.value.plan_id, selectionPayload())
+    selectionsError.value = ''
+  } catch (error) {
+    selectionsError.value = error instanceof Error ? error.message : '保存选择失败'
+  }
+}
+
+async function refreshCosts() {
+  if (!plan.value) return
+  costUpdating.value = true
+  costError.value = ''
+  try {
+    await persistSelections()
+    plan.value = await recalculatePlanCosts(plan.value.plan_id)
+    costDirty.value = false
+  } catch (error) {
+    costError.value = error instanceof Error ? error.message : '更新花费失败'
+  } finally {
+    costUpdating.value = false
+  }
+}
+
 async function openMealSuggestions(dayIndex: number, mealType: string) {
   if (!plan.value) return
   mealModal.value = { dayIndex, mealType, label: mealLabel(mealType) }
+  mealAreasList.value = []
   mealOptions.value = []
+  activeMealArea.value = null
+  mealView.value = 'areas'
+  mealError.value = ''
+  nearbyQuery.value = ''
+  nearbySearchError.value = ''
+  mealLoading.value = true
+  try {
+    const result = await mealAreas(plan.value.plan_id, dayIndex + 1, mealType)
+    mealAreasList.value = result.items
+    mealBudgetMinutes.value = result.meal_budget_minutes
+    mealTravelBudget.value = result.travel_budget_minutes
+  } catch (error) {
+    mealError.value = error instanceof Error ? error.message : '获取用餐区域失败'
+  } finally {
+    mealLoading.value = false
+  }
+  if (!mealError.value && mealAreasList.value.length === 0) {
+    await loadNearbyMeals()
+  }
+}
+
+async function selectMealArea(area: MealArea) {
+  if (!plan.value || !mealModal.value) return
+  activeMealArea.value = area
+  mealView.value = 'restaurants'
+  mealOptions.value = []
+  mealAreaQuery.value = ''
+  mealAreaSearchError.value = ''
   mealError.value = ''
   mealLoading.value = true
   try {
-    const result = await mealSuggestions(plan.value.plan_id, dayIndex + 1, mealType)
+    const result = await mealAreaRestaurants(
+      plan.value.plan_id,
+      mealModal.value.dayIndex + 1,
+      mealModal.value.mealType,
+      area.id,
+    )
     mealOptions.value = result.items
   } catch (error) {
-    mealError.value = error instanceof Error ? error.message : '获取餐厅失败'
+    mealError.value = error instanceof Error ? error.message : '获取区域餐厅失败'
   } finally {
     mealLoading.value = false
+  }
+}
+
+async function loadNearbyMeals() {
+  if (!plan.value || !mealModal.value) return
+  mealView.value = 'nearby'
+  mealOptions.value = []
+  mealError.value = ''
+  nearbyQuery.value = ''
+  nearbySearchError.value = ''
+  mealLoading.value = true
+  try {
+    const result = await nearbyMeals(
+      plan.value.plan_id,
+      mealModal.value.dayIndex + 1,
+      mealModal.value.mealType,
+    )
+    mealOptions.value = result.items
+  } catch (error) {
+    mealError.value = error instanceof Error ? error.message : '获取附近餐厅失败'
+  } finally {
+    mealLoading.value = false
+  }
+}
+
+function backToMealAreas() {
+  mealView.value = 'areas'
+  activeMealArea.value = null
+  mealOptions.value = []
+  mealAreaQuery.value = ''
+  mealAreaSearchError.value = ''
+  nearbyQuery.value = ''
+  nearbySearchError.value = ''
+  mealError.value = ''
+}
+
+async function searchNearby() {
+  if (!plan.value || !mealModal.value) return
+  const query = nearbyQuery.value.trim()
+  if (!query) return
+  nearbySearching.value = true
+  nearbySearchError.value = ''
+  try {
+    const result = await searchNearbyMeals(
+      plan.value.plan_id,
+      mealModal.value.dayIndex + 1,
+      mealModal.value.mealType,
+      query,
+    )
+    mealOptions.value = result.items
+  } catch (error) {
+    nearbySearchError.value = error instanceof Error ? error.message : '搜索附近餐厅失败'
+  } finally {
+    nearbySearching.value = false
+  }
+}
+
+async function searchMealArea() {
+  if (!plan.value || !mealModal.value || !activeMealArea.value) return
+  const query = mealAreaQuery.value.trim()
+  if (!query) return
+  mealAreaSearching.value = true
+  mealAreaSearchError.value = ''
+  try {
+    const result = await searchMealAreaRestaurants(
+      plan.value.plan_id,
+      mealModal.value.dayIndex + 1,
+      mealModal.value.mealType,
+      activeMealArea.value.id,
+      query,
+    )
+    mealOptions.value = result.items
+  } catch (error) {
+    mealAreaSearchError.value = error instanceof Error ? error.message : '搜索餐厅失败'
+  } finally {
+    mealAreaSearching.value = false
   }
 }
 
@@ -382,6 +748,9 @@ function chooseMeal(suggestion: MealSuggestion) {
   const key = mealChoiceKey(mealModal.value.dayIndex, mealModal.value.mealType)
   mealChoices.value[key] = suggestion
   mealModal.value = null
+  costDirty.value = true
+  costError.value = ''
+  void persistSelections()
 }
 
 function closeMealModal() {
@@ -396,6 +765,11 @@ async function openStays() {
   selectView('stays')
   stayLoading.value = true
   stayError.value = ''
+  stayQuery.value = ''
+  staySearchResults.value = []
+  staySearchActive.value = false
+  staySearchError.value = ''
+  staySearching.value = false
   try {
     const result = await staySuggestions(plan.value.plan_id)
     stays.value = result.items
@@ -407,7 +781,36 @@ async function openStays() {
 }
 
 function chooseStay(suggestion: StaySuggestion) {
+  if (suggestion.price_status === 'no_availability') return
   selectedStay.value = suggestion
+  costDirty.value = true
+  costError.value = ''
+  void persistSelections()
+}
+
+async function runStaySearch() {
+  if (!plan.value) return
+  const query = stayQuery.value.trim()
+  if (!query) return
+  staySearching.value = true
+  staySearchError.value = ''
+  staySearchActive.value = true
+  try {
+    const result = await searchStays(plan.value.plan_id, query)
+    staySearchResults.value = result.items
+  } catch (error) {
+    staySearchError.value = error instanceof Error ? error.message : '搜索酒店失败'
+    staySearchResults.value = []
+  } finally {
+    staySearching.value = false
+  }
+}
+
+function clearStaySearch() {
+  stayQuery.value = ''
+  staySearchResults.value = []
+  staySearchActive.value = false
+  staySearchError.value = ''
 }
 
 function hideMap(planId: number, dayIndex: number) {
@@ -469,7 +872,7 @@ watch(plannerProgress, (value) => {
           class="rail-item"
           :class="{ active: activeView === item.id }"
           type="button"
-          @click="selectView(item.id)"
+          @click="navigate(item.id)"
         >
           <span class="rail-icon" aria-hidden="true">{{ item.id === 'overview' ? '◌' : item.id === 'create' ? '↗' : '≋' }}</span>
           <span>{{ item.label }}</span>
@@ -527,7 +930,21 @@ watch(plannerProgress, (value) => {
         <div class="create-layout">
           <div class="long-form">
             <div class="form-section"><h3>路线与日期</h3><div class="form-row"><label class="field-block"><span>出发地</span><input v-model="origin" placeholder="例如：福州" /></label><label class="field-block"><span>目的地</span><input v-model="destination" placeholder="例如：北京" /></label></div><div class="form-row"><label class="field-block"><span>开始日期</span><input v-model="startDate" type="date" /></label><label class="field-block"><span>旅行天数</span><input v-model="days" min="1" max="10" type="number" /></label></div></div>
-            <div class="form-section"><h3>你的节奏</h3><div class="preference-grid"><button v-for="item in preferenceOptions" :key="item.name" class="preference" :class="{ active: preferences.includes(item.name) }" type="button" :aria-pressed="preferences.includes(item.name)" @click="togglePreference(item.name)"><strong>{{ item.name }}</strong><span>{{ item.desc }}</span></button></div></div>
+            <div class="form-section">
+              <h3>兴趣与节奏</h3>
+              <p class="slider-intro">拖动滑杆设置偏好强度：0 表示不作为偏好，100 表示优先安排。</p>
+              <div class="slider-list">
+                <label v-for="item in interestOptions" :key="item.key" class="slider-field">
+                  <span class="slider-head"><strong>{{ item.name }}</strong><em>{{ item.desc }}</em><b>{{ interestValues[item.key] }}</b></span>
+                  <input v-model.number="interestValues[item.key]" type="range" min="0" max="100" step="5" :aria-label="`${item.name}兴趣强度`" />
+                </label>
+              </div>
+              <div class="slider-field pace-field">
+                <span class="slider-head"><strong>旅行节奏</strong><em>{{ paceLabel }} · 每天约 {{ dailyItemLimit }} 个景点</em><b>{{ pace }}</b></span>
+                <input v-model.number="pace" type="range" min="0" max="100" step="5" aria-label="旅行节奏" />
+                <span class="slider-scale"><span>轻松</span><span>充实</span></span>
+              </div>
+            </div>
             <div class="form-section"><h3>预算与偏好</h3><div class="form-row"><label class="field-block"><span>总预算</span><input v-model="budget" type="number" placeholder="例如：8000" /></label><label class="field-block"><span>交通偏好</span><select v-model="transportPreference"><option value="auto">自动：近步行，远公交</option><option value="transit">优先公共交通</option><option value="walk">尽量步行</option><option value="drive">自驾出行</option><option value="bicycle">骑行</option></select></label></div></div>
             <button class="primary-action form-submit" :disabled="loading" type="button" @click="beginPlanning">{{ loading ? '正在生成…' : '生成旅行方案' }} <span>→</span></button>
           </div>
@@ -540,7 +957,7 @@ watch(plannerProgress, (value) => {
           <div>
             <p class="section-kicker">WHERE TO STAY</p>
             <h2>住哪里，会改变每天的路线。</h2>
-            <p>当前按整趟一家推荐，优先靠近行程中的景点；价格和评分来自高德，可能缺失。</p>
+            <p>当前按整趟一家推荐，优先靠近行程中的景点；价格优先来自 RollingGo 实时查价，缺失时标待核，评分来自高德。</p>
           </div>
           <span class="large-step">04</span>
         </div>
@@ -559,13 +976,24 @@ watch(plannerProgress, (value) => {
           <p>{{ stayError }}</p>
         </div>
         <template v-else>
-          <div v-if="stays.length === 0" class="plan-state">
-            <h3>附近没有返回住宿</h3>
-            <p>可以稍后重试，或先按行程区域自行选择。</p>
+          <p v-if="selectedStay" class="stay-saved">已保存选择：<strong>{{ selectedStay.name }}</strong>（随当前方案版本保存）</p>
+          <form class="stay-search" @submit.prevent="runStaySearch">
+            <input v-model="stayQuery" type="search" placeholder="输入任意酒店名、品牌或商圈，如 汉庭、国贸、王府井" />
+            <button type="submit" :disabled="staySearching">搜索</button>
+            <button v-if="staySearchActive" type="button" class="stay-search-clear" @click="clearStaySearch">清除</button>
+          </form>
+          <p v-if="staySearchError" class="stay-search-error">{{ staySearchError }}</p>
+          <div v-if="staySearching" class="plan-state">
+            <span class="loading-ring"></span>
+            <h3>正在搜索酒店…</h3>
+          </div>
+          <div v-else-if="visibleStays.length === 0" class="plan-state">
+            <h3>{{ staySearchActive ? '没有找到匹配的酒店' : '附近没有返回住宿' }}</h3>
+            <p>{{ staySearchActive ? '换一个品牌名或关键词试试。' : '可以稍后重试，或先按行程区域自行选择。' }}</p>
           </div>
           <div v-else class="stay-grid">
             <article
-              v-for="stay in stays"
+              v-for="stay in visibleStays"
               :key="stay.name"
               class="stay-card"
               :class="{ selected: selectedStay?.name === stay.name }"
@@ -573,20 +1001,25 @@ watch(plannerProgress, (value) => {
               <div class="stay-card-head">
                 <span class="stay-area">{{ stay.business_area ?? '区域未知' }}</span>
                 <span v-if="selectedStay?.name === stay.name" class="stay-selected">已选择</span>
+                <span v-else-if="stay.tier" class="stay-tier">{{ stay.tier }}</span>
               </div>
               <h3>{{ stay.name }}</h3>
               <p>{{ stay.address ?? '地址未知' }}</p>
               <div class="stay-metrics">
-                <span>到景点平均 {{ stay.avg_attraction_distance_m !== null ? formatDistance(stay.avg_attraction_distance_m) : '未知' }}</span>
-                <span>参考价 {{ stay.cost_amount !== null ? `${formatMoney(stay.cost_amount)}/晚` : '待核' }}</span>
+                <span>日均通勤 {{ stay.avg_commute_minutes !== null ? `${stay.avg_commute_minutes} 分钟` : '未知' }}</span>
+                <span>单日最长 {{ stay.max_commute_minutes !== null ? `${stay.max_commute_minutes} 分钟` : '未知' }}</span>
+                <span v-if="stay.day_commutes.length">分天：{{ stay.day_commutes.map((value, index) => `第${index + 1}天 ${value} 分钟`).join(' · ') }}</span>
+                <span v-if="stay.cost_amount !== null">参考价 {{ formatMoney(stay.cost_amount) }}/晚<small v-if="stay.price_status === 'quoted'" class="price-source">实时价</small><small v-if="stay.over_budget" class="price-over">超预算</small></span>
+                <span v-else class="price-unavailable">{{ stayPriceLabel(stay) }}</span>
+                <span v-if="stay.price_note" class="price-note" :title="stay.price_note">{{ stay.price_note }}</span>
                 <span>评分 {{ stay.rating ?? '未知' }}</span>
               </div>
-              <button type="button" class="stay-button" @click="chooseStay(stay)">
-                {{ selectedStay?.name === stay.name ? '已选择这家' : '选择这家' }}
+              <button type="button" class="stay-button" :disabled="stay.price_status === 'no_availability'" @click="chooseStay(stay)">
+                {{ stay.price_status === 'no_availability' ? '暂无可订' : selectedStay?.name === stay.name ? '已选择这家' : '选择这家' }}
               </button>
             </article>
           </div>
-          <p class="stay-note">当前整趟只选一家住宿；数据结构和页面按“可扩展为多晚/多酒店”设计，暂不做订房。</p>
+          <p class="stay-note">{{ staySearchActive ? '搜索结果仍按每天首尾通勤排序；RollingGo 查不到实时价时标“待核”。' : '先按高德综合热度取前 25 家，再过滤低评分/超预算/纯宾馆，最后按每天首尾通勤排序；价格由 RollingGo 按入住日期查询，查不到标“待核”；当前整趟只选一家，暂不做订房。' }}</p>
         </template>
       </section>
 
@@ -623,19 +1056,59 @@ watch(plannerProgress, (value) => {
             <div><span>版本</span><strong>v{{ plan.version_no }}</strong></div>
           </div>
           <div v-if="plan.costs" class="cost-breakdown">
-            <span><em>门票</em>{{ formatMoney(plan.costs.tickets_amount) }}<small>{{ costStatusLabel(plan.costs.tickets_status) }}</small></span>
+            <span><em>门票</em>{{ formatMoney(plan.costs.tickets_amount) }}<small>{{ costStatusLabel(plan.costs.tickets_status) }} · 已确认 {{ formatMoney(plan.costs.tickets_confirmed_amount) }} / 估算 {{ formatMoney(plan.costs.tickets_estimated_amount) }}</small><small v-if="plan.costs.tickets_unknown_count">另有 {{ plan.costs.tickets_unknown_count }} 项待核</small></span>
             <span><em>市内交通</em>{{ formatMoney(plan.costs.transport_amount) }}<small>{{ costStatusLabel(plan.costs.transport_status) }}</small></span>
             <span><em>餐饮</em>{{ formatMoney(plan.costs.meals_amount) }}<small>{{ costStatusLabel(plan.costs.meals_status) }}</small></span>
             <span><em>住宿</em>{{ formatMoney(plan.costs.lodging_amount) }}<small>{{ costStatusLabel(plan.costs.lodging_status) }}</small></span>
             <span v-if="!plan.costs.budget_complete" class="cost-warning">费用未完整：{{ plan.costs.unknown_items.join('；') }}</span>
+            <span v-if="costDirty" class="cost-warning">已选餐厅/酒店，花费待更新</span>
+            <span v-if="plan.costs.updated_at" class="cost-updated">{{ costUpdatedLabel(plan.costs.updated_at) }}</span>
+            <span v-if="costError" class="cost-warning">{{ costError }}</span>
           </div>
           <div class="plan-toolbar">
-            <span>生成后已自动保存为版本；改条件只会新增版本，不覆盖旧版本。</span>
+            <span>{{ selectionsError || '餐厅/住宿选择会随当前版本保存；改条件只新增版本，不覆盖旧版本。' }}</span>
             <div class="plan-toolbar-actions">
+              <button type="button" class="cost-refresh" :class="{ pending: costDirty }" :disabled="costUpdating" @click="refreshCosts">{{ costUpdating ? '更新中…' : '更新花销' }}</button>
+              <button type="button" @click="toggleVersions">{{ showVersions ? '收起版本' : '版本历史' }}</button>
               <button type="button" @click="openStays">住宿推荐</button>
               <button type="button" :disabled="loading" @click="regeneratePlan">重新生成</button>
             </div>
           </div>
+
+          <section v-if="showVersions" class="version-panel">
+            <header class="version-head">
+              <div>
+                <p class="section-kicker">VERSION HISTORY</p>
+                <h3>方案版本</h3>
+              </div>
+              <button type="button" class="version-close" @click="showVersions = false">×</button>
+            </header>
+            <p v-if="versionsLoading" class="version-state">正在读取版本…</p>
+            <p v-else-if="versionsError" class="version-state version-error">{{ versionsError }}</p>
+            <p v-else-if="versions.length === 0" class="version-state">还没有保存的版本。</p>
+            <div v-else class="version-list">
+              <article
+                v-for="version in versions"
+                :key="version.plan_id"
+                class="version-row"
+                :class="{ current: plan.plan_id === version.plan_id }"
+              >
+                <div class="version-main">
+                  <strong>v{{ version.version_no }}</strong>
+                  <span v-if="plan.plan_id === version.plan_id" class="version-current">当前</span>
+                  <span class="version-status">{{ statusLabel(version.status) }}</span>
+                </div>
+                <div class="version-meta">
+                  <span>{{ version.start_date }} · {{ version.days }} 天 · {{ version.adults + version.children }} 人</span>
+                  <span>{{ formatMoney(version.total_estimated_cost) }} · 生成于 {{ versionTime(version.generated_at) }}</span>
+                </div>
+                <div class="version-actions">
+                  <button type="button" @click="openVersion(version)">查看</button>
+                  <button type="button" class="version-delete" @click="removeVersion(version)">删除</button>
+                </div>
+              </article>
+            </div>
+          </section>
 
           <article v-for="(day, dayIndex) in plan.days" :key="day.travel_date" class="day-card">
             <header class="day-head">
@@ -647,7 +1120,7 @@ watch(plannerProgress, (value) => {
                 <span>{{ weatherText(day) }}</span>
                 <span v-if="walkWeatherHint(day)" class="weather-walk-hint">{{ walkWeatherHint(day) }}</span>
                 <span>{{ day.walk_km !== null ? `步行 ${day.walk_km} km` : '步行距离未知' }}</span>
-                <span>{{ day.estimated_cost > 0 ? formatMoney(day.estimated_cost) : '费用待补全' }}</span>
+                <span>{{ day.estimated_cost > 0 ? `人均门票 ${formatMoney(day.estimated_cost)}` : '门票待补全' }}</span>
               </div>
             </header>
             <div class="day-body">
@@ -666,9 +1139,9 @@ watch(plannerProgress, (value) => {
                     <span class="item-order">{{ item.order }}</span>
                     <div class="item-main">
                       <strong>{{ item.name }}</strong>
-                      <span>{{ item.start_time.slice(0, 5) }}–{{ item.end_time.slice(0, 5) }} · {{ item.opening_known ? '开放时间已核' : '开放时间待核' }}</span>
+                      <span>{{ item.start_time.slice(0, 5) }}–{{ item.end_time.slice(0, 5) }} · {{ openingStatusLabel(item) }}</span>
                     </div>
-                    <span class="item-cost">{{ item.estimated_cost > 0 ? formatMoney(item.estimated_cost) : '票价待核' }}</span>
+                    <span class="item-cost">{{ itemTicketLabel(item) }}<small>{{ ticketStatusLabel(item.ticket_status) }}</small></span>
                   </li>
                   <li v-if="legFor(day, itemIndex)" class="leg-row" :class="{ failed: legFor(day, itemIndex)?.status !== 'ok' }">
                     <span class="leg-line"></span>
@@ -721,27 +1194,81 @@ watch(plannerProgress, (value) => {
       <div v-if="mealModal" class="meal-backdrop">
         <div class="meal-modal">
           <header class="meal-modal-head">
-            <div>
-              <p class="section-kicker">MEAL SUGGESTIONS</p>
-              <h3>{{ mealModal.label }}推荐 · 附近餐厅</h3>
+            <div class="meal-modal-title">
+              <button v-if="mealView !== 'areas'" type="button" class="meal-back" @click="backToMealAreas">←</button>
+              <div>
+                <p class="section-kicker">MEAL SUGGESTIONS</p>
+                <h3>
+                  {{ mealModal.label }}
+                  <template v-if="mealView === 'areas'">用餐区域</template>
+                  <template v-else-if="mealView === 'nearby'">附近其他</template>
+                  <template v-else>· {{ activeMealArea?.name }}</template>
+                </h3>
+                <p v-if="mealView === 'areas'" class="meal-budget-hint">
+                  总预算 {{ mealBudgetMinutes }} 分钟 · 交通不超过 {{ mealTravelBudget }} 分钟
+                </p>
+              </div>
             </div>
             <button type="button" class="meal-close" @click="closeMealModal">×</button>
           </header>
-          <div v-if="mealLoading" class="meal-modal-state">正在查询附近餐厅…</div>
+          <div v-if="mealLoading" class="meal-modal-state">正在按实际路线时间筛选…</div>
           <div v-else-if="mealError" class="meal-modal-state">{{ mealError }}</div>
-          <div v-else-if="mealOptions.length === 0" class="meal-modal-state">附近暂时没有返回餐厅</div>
-          <div v-else class="meal-options">
-            <button v-for="suggestion in mealOptions" :key="suggestion.name" type="button" class="meal-option" @click="chooseMeal(suggestion)">
-              <strong>{{ suggestion.name }}</strong>
-              <span>{{ suggestion.address ?? '地址未知' }}</span>
-              <small>
-                步行 {{ suggestion.distance_m !== null ? `${suggestion.distance_m} m` : '距离未知' }}
-                · 人均 {{ suggestion.cost_amount !== null ? formatMoney(suggestion.cost_amount) : '待核' }}
-                · 评分 {{ suggestion.rating ?? '未知' }}
-              </small>
+          <template v-else-if="mealView === 'areas'">
+            <div v-if="mealAreasList.length === 0" class="meal-modal-state">
+              没有区域满足当前用餐时间预算，下面看看附近其他餐厅。
+            </div>
+            <div v-else class="meal-area-groups">
+              <div v-for="group in mealAreaGroups" :key="group.type" class="meal-area-group">
+                <h4>{{ group.label }}</h4>
+                <div class="meal-areas">
+                  <button v-for="area in group.items" :key="area.id" type="button" class="meal-area" @click="selectMealArea(area)">
+                    <div class="meal-area-head">
+                      <strong>{{ area.name }}</strong>
+                      <span class="meal-area-time">交通约 {{ area.travel_minutes }} 分钟</span>
+                    </div>
+                    <small>
+                      区域热度 {{ Math.round(area.popularity * 100) }}
+                      <template v-if="area.weather_friendly"> · 室内，雨天/高温友好</template>
+                      · {{ area.note ?? '含区域步行' }}
+                    </small>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <button type="button" class="meal-nearby-button" @click="loadNearbyMeals">
+              附近其他 · 不进入热门区域，按实际路线时间排序
             </button>
-          </div>
-          <p class="meal-modal-note">推荐只用于选择，不提供订座；营业时间和价格请以商家为准。</p>
+          </template>
+          <template v-else>
+            <form v-if="mealView === 'restaurants'" class="meal-area-search" @submit.prevent="searchMealArea">
+              <input v-model="mealAreaQuery" type="search" :placeholder="`在${activeMealArea?.name ?? '当前区域'}内搜索餐厅，如烤鸭、火锅、小吃`" />
+              <button type="submit" :disabled="mealAreaSearching">搜索</button>
+            </form>
+            <form v-else-if="mealView === 'nearby'" class="meal-area-search" @submit.prevent="searchNearby">
+              <input v-model="nearbyQuery" type="search" placeholder="在附近其他中搜索，如烤鸭、火锅、小吃" />
+              <button type="submit" :disabled="nearbySearching">搜索</button>
+            </form>
+            <p v-if="mealAreaSearchError" class="meal-search-error">{{ mealAreaSearchError }}</p>
+            <p v-if="nearbySearchError" class="meal-search-error">{{ nearbySearchError }}</p>
+            <div v-if="mealAreaSearching || nearbySearching" class="meal-modal-state">正在搜索…</div>
+            <div v-else-if="mealOptions.length === 0" class="meal-modal-state">没有满足时间预算的餐厅</div>
+            <div v-else class="meal-options">
+              <button v-for="suggestion in mealOptions" :key="`${suggestion.name}-${suggestion.address}`" type="button" class="meal-option" @click="chooseMeal(suggestion)">
+                <strong>
+                  {{ suggestion.name }}
+                  <span v-if="suggestion.quality_tag" class="meal-quality">{{ suggestion.quality_tag }}</span>
+                </strong>
+                <span>{{ suggestion.address ?? '地址未知' }}</span>
+                <small>
+                  步行 {{ suggestion.distance_m !== null ? `${suggestion.distance_m} m` : '距离未知' }}
+                  <template v-if="suggestion.travel_minutes !== null"> · 交通约 {{ suggestion.travel_minutes }} 分钟</template>
+                  · 人均 {{ suggestion.cost_amount !== null ? formatMoney(suggestion.cost_amount) : '待核' }}
+                  · 评分 {{ suggestion.rating ?? '未知' }}
+                </small>
+              </button>
+            </div>
+          </template>
+          <p class="meal-modal-note">推荐只用于选择，不提供订座；人气只参与排序，实际路线时间决定是否进入推荐。</p>
         </div>
       </div>
     </main>

@@ -4,7 +4,7 @@
 可以直接构造模型实例来测。检索查询本身依赖 PostGIS，留待集成验证。
 """
 
-from datetime import time
+from datetime import datetime, time
 from decimal import Decimal
 
 from app.models.poi import POI
@@ -14,8 +14,10 @@ from app.services.candidates import (
     DEFAULT_VISIT_MINUTES,
     build_candidate,
     normalize_tags,
+    opening_status,
     opening_windows,
     ticket_cost,
+    ticket_info,
 )
 
 
@@ -60,6 +62,87 @@ def test_ticket_cost_ignores_tickets_without_price() -> None:
     tickets = [Ticket(ticket_type="unknown", price=None)]
 
     assert ticket_cost(tickets, fallback=Decimal("12")) == 12.0
+
+
+def test_ticket_info_keeps_official_adult_and_child_prices() -> None:
+    tickets = [
+        Ticket(
+            ticket_type="成人票",
+            price=Decimal("60"),
+            source="official_website",
+            confidence=Decimal("1.0"),
+            updated_at=datetime(2026, 11, 1, 10, 0),
+        ),
+        Ticket(
+            ticket_type="儿童票",
+            price=Decimal("30"),
+            source="official_website",
+            confidence=Decimal("1.0"),
+        ),
+    ]
+
+    info = ticket_info(tickets, fallback=None)
+
+    assert info.adult_price == 60.0
+    assert info.child_price == 30.0
+    assert info.status == "confirmed"
+    assert info.verified_at == "2026-11-01"
+
+
+def test_ticket_info_marks_third_party_price_as_estimated() -> None:
+    tickets = [
+        Ticket(
+            ticket_type="成人票",
+            price=Decimal("70"),
+            source="amap",
+            confidence=Decimal("0.6"),
+        )
+    ]
+
+    info = ticket_info(tickets, fallback=None)
+
+    assert info.adult_price == 70.0
+    assert info.status == "estimated"
+    assert info.verified_at is None
+
+
+def test_ticket_info_uses_avg_cost_as_estimated_fallback() -> None:
+    info = ticket_info([], fallback=Decimal("55"))
+
+    assert info.adult_price == 55.0
+    assert info.status == "estimated"
+    assert info.source == "poi_avg_cost"
+
+
+def test_ticket_info_is_unknown_without_any_price() -> None:
+    info = ticket_info([], fallback=None)
+
+    assert info.adult_price is None
+    assert info.status == "unknown"
+
+
+# —— 开放时间可信度 ——
+
+
+def test_opening_status_confirmed_only_from_official_rows() -> None:
+    official = [
+        OpeningHour(
+            day_of_week="mon",
+            source="official_website",
+            confidence=Decimal("1.0"),
+        )
+    ]
+    third_party = [
+        OpeningHour(
+            day_of_week="mon",
+            source="Amap API",
+            confidence=Decimal("0.7"),
+        )
+    ]
+
+    assert opening_status(official) == "confirmed"
+    assert opening_status(third_party) == "estimated"
+    assert opening_status([]) == "unknown"
 
 
 # —— 标签归一化 ——

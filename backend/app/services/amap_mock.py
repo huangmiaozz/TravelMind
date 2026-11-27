@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from datetime import date
+from dataclasses import replace
 from app.planners.models import TransitAlternative, TransitSegment
 from app.services.amap import (
     RestaurantSuggestion,
@@ -18,6 +19,7 @@ from app.services.coordinates import meters_between
 
 _SPEED_MPS = {"walk": 1.3, "bicycle": 4.2, "transit": 7.0, "drive": 11.0}
 _DISTANCE_FACTOR = {"walk": 1.2, "bicycle": 1.25, "transit": 1.35, "drive": 1.3}
+_CITY_CENTERS = {"北京": (116.397, 39.909), "福州": (119.296, 26.082)}
 
 
 class MockAmapProvider:
@@ -110,6 +112,8 @@ class MockAmapProvider:
         *,
         radius: int = 800,
         limit: int = 5,
+        sortrule: str = "distance",
+        types: str = "050000",
     ) -> list[RestaurantSuggestion]:
         names = ["演示餐厅 A", "演示餐厅 B", "演示餐厅 C"]
         costs = [45.0, 60.0, 80.0]
@@ -122,6 +126,8 @@ class MockAmapProvider:
                 cost_amount=costs[index],
                 rating=ratings[index],
                 location=location,
+                poi_type="餐饮服务;中餐厅;中餐厅",
+                typecode="050100",
             )
             for index in range(min(3, limit))
         ]
@@ -133,6 +139,7 @@ class MockAmapProvider:
         *,
         radius: int = 3000,
         limit: int = 8,
+        sortrule: str = "distance",
     ) -> list[StaySuggestion]:
         names = ["演示酒店 A", "演示酒店 B", "演示酒店 C"]
         costs = [380.0, 450.0, 520.0]
@@ -150,3 +157,18 @@ class MockAmapProvider:
             )
             for index in range(min(3, limit))
         ]
+
+    def search_hotels(
+        self, keywords: str, city: str, *, limit: int = 10
+    ) -> list[StaySuggestion]:
+        return self.nearby_hotels(
+            _CITY_CENTERS.get(city, (0.0, 0.0)), city, limit=limit
+        )
+
+    def search_restaurants(
+        self, keywords: str, city: str, *, limit: int = 10
+    ) -> list[RestaurantSuggestion]:
+        items = self.nearby_restaurants(
+            _CITY_CENTERS.get(city, (0.0, 0.0)), city, limit=limit
+        )
+        return [replace(item, location=None) for item in items]

@@ -35,10 +35,15 @@ class Ticket(Base):
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     currency: Mapped[str] = mapped_column(String(16), default="CNY", nullable=False)
     price_desc: Mapped[str | None] = mapped_column(Text)
+    # 票价核验状态与适用人群；v0.4 起显式保存，避免只靠 source 猜。
+    status: Mapped[str] = mapped_column(String(16), default="unknown", nullable=False)
+    applies_to: Mapped[str | None] = mapped_column(String(32))
     effective_from: Mapped[date | None] = mapped_column(Date)
     effective_to: Mapped[date | None] = mapped_column(Date)
     source: Mapped[str] = mapped_column(String(128))
     source_url: Mapped[str | None] = mapped_column(Text)
+    verified_at: Mapped[date | None] = mapped_column(Date)
+    raw_text: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
 

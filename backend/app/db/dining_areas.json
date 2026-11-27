@@ -1,0 +1,176 @@
+{
+  "北京": [
+    {
+      "id": "beijing-qianmen",
+      "name": "前门大街",
+      "aliases": ["大栅栏", "鲜鱼口"],
+      "center": [116.3975, 39.8992],
+      "radius_m": 900,
+      "popularity": 0.95,
+      "type": "food_street",
+      "weather_friendly": false
+    },
+    {
+      "id": "beijing-wangfujing",
+      "name": "王府井",
+      "aliases": ["东单", "王府井大街"],
+      "center": [116.4108, 39.9148],
+      "radius_m": 700,
+      "popularity": 0.9,
+      "type": "food_street",
+      "weather_friendly": false
+    },
+    {
+      "id": "beijing-gui-jie",
+      "name": "簋街",
+      "aliases": ["东直门内大街"],
+      "center": [116.4342, 39.9415],
+      "radius_m": 900,
+      "popularity": 0.86,
+      "type": "food_street",
+      "weather_friendly": false
+    },
+    {
+      "id": "beijing-nanluoguxiang",
+      "name": "南锣鼓巷",
+      "aliases": ["什刹海", "鼓楼"],
+      "center": [116.4032, 39.9372],
+      "radius_m": 800,
+      "popularity": 0.84,
+      "type": "food_street",
+      "weather_friendly": false
+    },
+    {
+      "id": "beijing-niujie",
+      "name": "牛街",
+      "aliases": ["牛街清真美食"],
+      "center": [116.3635, 39.8870],
+      "radius_m": 800,
+      "popularity": 0.82,
+      "type": "food_street",
+      "weather_friendly": false
+    },
+    {
+      "id": "beijing-sanlitun",
+      "name": "三里屯",
+      "aliases": ["工体", "太古里"],
+      "center": [116.4550, 39.9330],
+      "radius_m": 900,
+      "popularity": 0.8,
+      "type": "neighborhood",
+      "weather_friendly": false
+    },
+    {
+      "id": "beijing-xidan-joycity",
+      "name": "西单大悦城",
+      "aliases": ["西单"],
+      "center": [116.3730, 39.9100],
+      "radius_m": 450,
+      "popularity": 0.86,
+      "type": "mall",
+      "weather_friendly": true
+    },
+    {
+      "id": "beijing-chaoyang-joycity",
+      "name": "朝阳大悦城",
+      "aliases": ["青年路"],
+      "center": [116.5170, 39.9240],
+      "radius_m": 500,
+      "popularity": 0.84,
+      "type": "mall",
+      "weather_friendly": true
+    },
+    {
+      "id": "beijing-guomao",
+      "name": "国贸商城",
+      "aliases": ["国贸", "CBD"],
+      "center": [116.4610, 39.9090],
+      "radius_m": 450,
+      "popularity": 0.88,
+      "type": "mall",
+      "weather_friendly": true
+    }
+  ],
+  "福州": [
+    {
+      "id": "fuzhou-sanfangqixiang",
+      "name": "三坊七巷",
+      "aliases": ["南后街", "东街口"],
+      "center": [119.2966, 26.0820],
+      "radius_m": 900,
+      "popularity": 0.95,
+      "type": "food_street",
+      "weather_friendly": false
+    },
+    {
+      "id": "fuzhou-shangxiahang",
+      "name": "上下杭",
+      "aliases": ["中亭街", "苍霞"],
+      "center": [119.3050, 26.0530],
+      "radius_m": 800,
+      "popularity": 0.88,
+      "type": "food_street",
+      "weather_friendly": false
+    },
+    {
+      "id": "fuzhou-daming",
+      "name": "达明美食街",
+      "aliases": ["达明路", "东街口"],
+      "center": [119.2930, 26.0860],
+      "radius_m": 600,
+      "popularity": 0.84,
+      "type": "food_street",
+      "weather_friendly": false
+    },
+    {
+      "id": "fuzhou-laoyaozhou",
+      "name": "老药洲街",
+      "aliases": ["台江", "中亭街"],
+      "center": [119.3160, 26.0570],
+      "radius_m": 700,
+      "popularity": 0.8,
+      "type": "food_street",
+      "weather_friendly": false
+    },
+    {
+      "id": "fuzhou-xueshengjie",
+      "name": "学生街",
+      "aliases": ["仓山", "师大学生街"],
+      "center": [119.3060, 26.0430],
+      "radius_m": 700,
+      "popularity": 0.78,
+      "type": "food_street",
+      "weather_friendly": false
+    },
+    {
+      "id": "fuzhou-mixc",
+      "name": "万象城",
+      "aliases": ["台江万象"],
+      "center": [119.3030, 26.0610],
+      "radius_m": 500,
+      "popularity": 0.84,
+      "type": "mall",
+      "weather_friendly": true
+    },
+    {
+      "id": "fuzhou-cangshan-wanda",
+      "name": "仓山万达",
+      "aliases": ["仓山万达广场"],
+      "center": [119.2740, 26.0310],
+      "radius_m": 500,
+      "popularity": 0.82,
+      "type": "mall",
+      "weather_friendly": true
+    },
+    {
+      "id": "fuzhou-shio",
+      "name": "世欧广场",
+      "aliases": ["世欧"],
+      "center": [119.3010, 26.0710],
+      "radius_m": 450,
+      "popularity": 0.8,
+      "type": "mall",
+      "weather_friendly": true
+    }
+  ]
+}

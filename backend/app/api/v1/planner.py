@@ -94,8 +94,8 @@ def planning_notes(payload: PlannerPlanRequest, trip: TripPlan) -> list[str]:
                 "排程使用了带标记的保守回退耗时。"
             )
     notes.append(
-        "费用口径：已合计门票、市内交通、餐饮估算和住宿估算；"
-        "门票票价未核验时不按 0 元确认，当前总费用不含门票。"
+        "费用口径：已按成人/儿童人数合计门票，并计入市内交通、餐饮和住宿估算；"
+        "门票未核验时不按 0 元确认，儿童票缺失时按成人价估算并标注。"
     )
     notes.append(
         "交通费用：公交票价和打车/骑行是估算值，已计入市内交通；"
@@ -104,7 +104,10 @@ def planning_notes(payload: PlannerPlanRequest, trip: TripPlan) -> list[str]:
     adults = getattr(payload, "adults", 1)
     children = getattr(payload, "children", 0)
     if adults + children > 1:
-        notes.append("门票尚未按同行人数放大：当前费用为单人门票参考值。")
+        notes.append(
+            f"门票已按 {adults} 名成人 + {children} 名儿童计价；"
+            "儿童票未核验时按成人价估算。"
+        )
     if payload.max_walk_km is not None:
         statuses = {day.walk_constraint for day in trip.days}
         if not legs:
